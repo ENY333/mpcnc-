@@ -1,101 +1,84 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#070b10">
-<title>CNC Studio</title>
-<link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNC Studio</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
-<div class="app">
-  <nav class="menubar">
-    <div class="brand"><span class="logo">C</span><span><b>CNC Studio</b><small>Web v3 • CNC Simulator</small></span></div>
-    <button class="menu-btn" data-menu="file">Tệp</button>
-    <button class="menu-btn" data-menu="edit">Chỉnh sửa</button>
-    <button class="menu-btn" data-menu="view">Xem</button>
-    <button class="menu-btn" data-menu="simulate">Mô phỏng</button>
-    <button class="menu-btn" data-menu="check">Kiểm tra</button>
-    <button class="menu-btn" data-menu="learn">Học CNC</button>
-    <span class="spacer"></span>
-    <span class="controller-label">Controller</span>
-    <select id="controller"><option>FANUC</option><option>HAAS</option><option>LINUXCNC</option></select>
-    <span class="controller-badge">FANUC</span>
-    <div class="dropdowns">
-      <div class="dropdown" id="menu-file"><button id="mNew">Mới</button><button id="mOpen">Mở G-code</button><button id="mSave">Tải G-code</button></div>
-      <div class="dropdown" id="menu-edit"><button id="mClear">Xóa code</button><button id="mReset">Reset mô phỏng</button></div>
-      <div class="dropdown" id="menu-view"><button id="mFit">Fit bản vẽ</button><button id="mGrid">Bật/tắt lưới</button></div>
-      <div class="dropdown" id="menu-simulate"><button id="mRun">Chạy</button><button id="mPause">Tạm dừng</button><button id="mStop">Dừng</button><button id="mStep">Từng bước</button></div>
-      <div class="dropdown" id="menu-check"><button id="mCheck">Kiểm tra G-code</button></div>
-      <div class="dropdown" id="menu-learn"><button>G00 / G01 / G02 / G03</button><button>R / CR= / I / J / K</button><button>PHAY / TIỆN</button></div>
+
+<header class="topbar">
+    <div class="brand">
+        <div class="brand-icon">C</div>
+        <div>
+            <div class="brand-name">CNC Studio</div>
+            <div class="brand-sub">Web v3 · CNC Simulator</div>
+        </div>
     </div>
-  </nav>
 
-  <section class="toolbar">
-    <button id="newBtn">＋<span>Mới</span></button>
-    <button id="openBtn">📂<span>Mở</span></button>
-    <button id="saveBtn">💾<span>Tải</span></button>
-    <i></i>
-    <button id="runBtn" class="primary">▶<span>Chạy</span></button>
-    <button id="pauseBtn">Ⅱ<span>Dừng</span></button>
-    <button id="stopBtn" class="danger">■<span>Stop</span></button>
-    <button id="stepBtn">⏭<span>Bước</span></button>
-    <button id="resetBtn">↻<span>Reset</span></button>
-    <i></i>
-    <button id="millingBtn" class="mode active">PHAY</button>
-    <button id="turningBtn" class="mode">TIỆN</button>
-    <span class="spacer"></span>
-    <button id="fitBtn">⛶<span>Fit</span></button>
-    <button id="gridBtn">Grid</button>
-    <input id="fileInput" type="file" accept=".nc,.cnc,.gcode,.txt" hidden>
-  </section>
+    <div class="connection">
+        <span class="status-dot"></span>
+        Offline / GitHub Pages
+    </div>
+</header>
 
-  <main class="workspace">
-    <section class="editor-panel panel">
-      <div class="panel-head"><span class="tab">program.nc</span><span id="modeBadge" class="badge">PHAY • G17 • G90 • mm</span></div>
-      <div class="editor-wrap">
-        <div id="lineNumbers" class="line-numbers"></div>
-        <textarea id="code" spellcheck="false" wrap="off"></textarea>
-      </div>
-      <div class="editor-footer"><span id="cursorInfo">Dòng 1 / 1</span><span id="dirty">● Chưa lưu</span></div>
+<nav class="menu">
+    <div>Tệp</div>
+    <div>Chỉnh sửa</div>
+    <div>Xem</div>
+    <div>Mô phỏng</div>
+    <div>Kiểm tra</div>
+    <div>Học CNC</div>
+
+    <div class="controller">
+        <span>Controller</span>
+        <select>
+            <option>FANUC</option>
+        </select>
+        <button>FANUC</button>
+    </div>
+</nav>
+
+<main class="workspace">
+
+    <!-- CODE PANEL -->
+    <section class="code-panel">
+
+        <div class="panel-tab">
+            <span>program.nc</span>
+        </div>
+
+        <div class="code-area" id="codeArea">
+            <!-- G-code sẽ được JS đưa vào đây -->
+        </div>
+
     </section>
 
-    <section class="view-panel panel">
-      <div class="view-head">
-        <strong id="viewTitle">2D</strong>
-        <div class="coords"><b>X</b> <span id="xPos">0.000</span> &nbsp; <b id="coordYLabel">Y</b> <span id="yPos">0.000</span> &nbsp; <b>Z</b> <span id="zPos">5.000</span></div>
-      </div>
-      <div class="canvas-wrap"><canvas id="canvas"></canvas></div>
-      <div class="view-footer"><div class="legend"><span class="rapid"></span> G00 <span class="feed"></span> G01 <span class="cw"></span> G02 <span class="ccw"></span> G03</div></div>
+    <!-- GRAPH PANEL -->
+    <section class="graph-panel">
+
+        <div class="graph-header">
+            <div class="graph-title">2D</div>
+
+            <div class="coordinates">
+                <span>X <b id="coordX">0.000</b></span>
+                <span>Y <b id="coordY">0.000</b></span>
+                <span>...</span>
+            </div>
+        </div>
+
+        <div class="drawing-area" id="drawingArea">
+            <!-- Canvas vẽ CNC nằm ở đây -->
+            <canvas id="cncCanvas"></canvas>
+        </div>
+
     </section>
-  </main>
 
-  <section class="bottom">
-    <div class="info-card">
-      <div class="card-title">CHƯƠNG TRÌNH</div>
-      <div class="metrics">
-        <div><small>Dòng</small><b id="metricLines">1</b></div>
-        <div><small>Đường chạy</small><b id="metricLength">0.000 mm</b></div>
-        <div><small>Thời gian</small><b id="metricTime">0:00</b></div>
-        <div><small>Trạng thái</small><b id="metricState">Sẵn sàng</b></div>
-      </div>
-    </div>
-    <div class="info-card">
-      <div class="card-title">MÁY</div>
-      <div class="machine-grid">
-        <span>X <b id="mx">0.000</b></span><span>Y <b id="my">0.000</b></span><span>Z <b id="mz">5.000</b></span>
-        <span>F <b id="mf">0</b></span><span>S <b id="ms">0</b></span><span>T <b id="mt">1</b></span>
-      </div>
-    </div>
-    <div class="info-card diagnostics">
-      <div class="card-title">KIỂM TRA G-CODE <b id="diagCount">0</b></div>
-      <div id="diagList" class="diag-list"><div class="diag empty">Không có cảnh báo</div></div>
-    </div>
-  </section>
+</main>
 
-  <footer class="statusbar"><span id="statusText">Sẵn sàng • Live parser</span><span>Ctrl+S tải • Ctrl+Enter chạy • Click đường chạy để chọn dòng code</span></footer>
-</div>
-<script src="cnc-engine.js"></script>
 <script src="app.js"></script>
+
 </body>
 </html>
