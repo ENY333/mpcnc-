@@ -1,193 +1,110 @@
-(()=>{
-'use strict';
-const $=s=>document.querySelector(s), code=$('#code'),canvas=$('#canvas'),ctx=canvas.getContext('2d');
-const state={mode:'milling',controller:'FANUC',result:null,panX:0,panY:0,grid:false,step:0,running:false,paused:false,timer:null,autoFit:true,selectedLine:null};
-const COLORS={G00:'#f87171',G01:'#38a9ff',G02:'#34d399',G03:'#f5c451'};
-const unitName=()=>state.result?.state?.units==='G20'?'inch':'mm';
-function lines(){return code.value.replace(/\r/g,'').split('\n')}
-function updateLines(){const ls=lines();$('#lineNumbers').innerHTML=ls.map((_,i)=>`<div>${i+1}</div>`).join('');$('#metricLines').textContent=ls.length;markCodeLine(state.selectedLine||0);cursor()}
-function markCodeLine(n){document.querySelectorAll('#lineNumbers div').forEach((el,i)=>el.classList.toggle('active',i+1===n))}
-function cursor(){const n=code.value.slice(0,code.selectionStart).split('\n').length;$('#cursorInfo').textContent=`Dòng ${n} / ${lines().length}`}
+(()=>{"use strict";
+const $=s=>document.querySelector(s),code=$("#code"),canvas=$("#canvas"),ctx=canvas.getContext("2d");
+const state={mode:"milling",controller:"FANUC",result:null,selectedLine:null,step:0,running:false,paused:false,timer:null,grid:false,zoom:1};
+const C={G00:"#f87171",G01:"#38a9ff",G02:"#34d399",G03:"#f5c451"};
+const sample=`%
+N00 G54 G90 S500 M03
+N01 G00 X20 Y20
+N02 G01 Z-2 F50
+N03 G01 X20 Y145
+N04 G01 X65 Y170
+N05 G01 X140 Y170
+N06 G02 X140 Y120 R25
+N07 G03 X140 Y80 R20
+N08 G01 X115 Y80
+N09 G01 X140 Y40
+N10 G01 X40 Y40
+N11 G00 Z5
+N12 M05
+N13 M30
+%`;
+function lines(){return code.value.replace(/\r/g,"").split("\n")}
 function fmt(v){return Number(v||0).toFixed(3)}
-function fmtTime(sec){return !isFinite(sec)||sec<=0?'0:00':`${Math.floor(sec/60)}:${String(Math.floor(sec%60)).padStart(2,'0')}`}
-function parse(){
- clearInterval(state.timer);state.running=false;state.paused=false;state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:state.controller});state.step=0;
- if(state.autoFit){state.zoom=1;state.panX=0;state.panY=0}
- const r=state.result,s=r.state,u=unitName();$('#metricLength').textContent=fmt(r.totalLength)+' '+u;$('#metricTime').textContent=s.f>0?fmtTime(r.totalLength/s.f*60):'0:00';
- ['x','y','z'].forEach(k=>{$('#m'+k).textContent=fmt(s[k]);$('#'+k+'Pos').textContent=fmt(s[k])});$('#mf').textContent=fmt(s.f);$('#ms').textContent=fmt(s.spindle);$('#mt').textContent=s.tool;
- $('#modeBadge').textContent=`${state.mode==='turning'?'TIỆN':'PHAY'} • ${s.plane} • ${s.distance} • ${u}`;$('#controllerBadge').textContent=state.controller;$('#emptyHint').classList.toggle('hidden',!r.segments.length);$('#statusText').textContent=r.errors.length?`Có ${r.errors.length} lỗi • xem Kiểm tra G-code`:`Sẵn sàng • ${r.segments.length} đoạn`;draw();diagnostics();
-}
-function diagnostics(){const d=state.result?.diagnostics||[];$('#diagCount').textContent=d.length;$('#diagList').innerHTML=d.length?d.slice(-40).map(x=>`<button class="diag ${x.severity}" data-line="${x.line}"><b>L${x.line}</b> ${escapeHtml(x.message)} ${x.code?`<span>${x.code}</span>`:''}</button>`).join(''):'<div class="diag empty">Không có cảnh báo</div>';$('#diagList').querySelectorAll('[data-line]').forEach(b=>b.onclick=()=>gotoLine(Number(b.dataset.line)))}
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function gotoLine(n){const ls=lines();if(!n||n<1||n>ls.length)return;let pos=0;for(let i=1;i<n;i++)pos+=ls[i-1].length+1;code.focus();code.setSelectionRange(pos,pos+(ls[n-1]?.length||0));const lh=parseFloat(getComputedStyle(code).lineHeight)||18;code.scrollTop=Math.max(0,(n-4)*lh);$('#lineNumbers').scrollTop=code.scrollTop;state.selectedLine=n;markCodeLine(n);draw()}
-function distanceToSegment(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;if(l2<1e-9)return Math.hypot(px-ax,py-ay);let t=((px-ax)*dx+(py-ay)*dy)/l2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(ax+dx*t),py-(ay+dy*t))}
-function pathHitTest(clientX,clientY){const r=state.result;if(!r?.segments?.length)return null;const rect=canvas.getBoundingClientRect();const px=clientX-rect.left,py=clientY-rect.top;let bestLine=null,best=12;for(const s of r.segments){const a=world(s.x,s.y),b=world(s.x2,s.y2);const d=distanceToSegment(px,py,a[0],a[1],b[0],b[1]);if(d<best){best=d;bestLine=s.line}}return bestLine}
+function updateLines(){const ls=lines();$("#lineNumbers").innerHTML=ls.map((_,i)=>`<div data-line="${i+1}">${i+1}</div>`).join("");$("#metricLines").textContent=ls.length;cursor()}
+function cursor(){const n=code.value.slice(0,code.selectionStart).split("\n").length;$("#cursorInfo").textContent=`Dòng ${n} / ${lines().length}`}
+function parse(){state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:state.controller});state.selectedLine=null;state.step=0;updateStats();draw();diagnostics()}
+function updateStats(){const r=state.result,s=r.state,u=s.units==="G20"?"inch":"mm";$("#metricLength").textContent=`${fmt(r.totalLength)} ${u}`;$("#metricTime").textContent=s.f?`${Math.floor(r.totalLength/s.f)}s`:"0:00";$("#metricState").textContent=r.errors.length?`Có ${r.errors.length} lỗi`:"Sẵn sàng";["x","y","z"].forEach(k=>{$("#m"+k).textContent=fmt(s[k]);$("#"+k+"Pos").textContent=fmt(s[k])});$("#mf").textContent=fmt(s.f);$("#ms").textContent=fmt(s.spindle);$("#mt").textContent=s.tool;$("#modeBadge").textContent=`${state.mode==="turning"?"TIỆN":"PHAY"} • ${s.plane} • ${s.distance} • ${u}`;$("#statusText").textContent=r.errors.length?"Có lỗi G-code":"Sẵn sàng • Live parser"}
+function diagnostics(){const d=state.result?.diagnostics||[];$("#diagCount").textContent=d.length;$("#diagList").innerHTML=d.length?d.slice(-40).map(x=>`<button class="diag ${x.severity}" data-line="${x.line}"><b>L${x.line}</b>${x.message}<span>${x.code||""}</span></button>`).join(""):'<div class="diag empty">Không có cảnh báo</div>';$("#diagList").querySelectorAll("[data-line]").forEach(b=>b.onclick=()=>selectLine(+b.dataset.line))}
+function selectLine(n){state.selectedLine=n;const ls=lines();let p=0;for(let i=1;i<n;i++)p+=ls[i-1].length+1;code.focus();code.setSelectionRange(p,p+(ls[n-1]||"").length);const el=$("#lineNumbers").querySelector(`[data-line="${n}"]`);if(el)el.scrollIntoView({block:"nearest"});draw()}
 function resize(){const r=canvas.getBoundingClientRect(),d=devicePixelRatio||1;canvas.width=Math.max(1,r.width*d);canvas.height=Math.max(1,r.height*d);ctx.setTransform(d,0,0,d,0,0);draw()}
-function world(x,y){const w=canvas.clientWidth,h=canvas.clientHeight,b=state.result?.bounds;if(!b)return[30,h-30];const pad=46,sx=Math.max(1,b.maxX-b.minX),sy=Math.max(1,b.maxY-b.minY),scale=Math.max(.001,Math.min((w-pad*2)/sx,(h-pad*2)/sy));return[pad+(x-b.minX)*scale+state.panX,h-pad-(y-b.minY)*scale+state.panY]}
-function niceStep(span){
-  const target=Math.max(1,span/8);
-  const p=Math.pow(10,Math.floor(Math.log10(target)));
-  const n=target/p;
-  return (n<=1?1:n<=2?2:n<=5?5:10)*p;
+function world(x,y){
+ const b=state.result?.bounds,w=canvas.clientWidth,h=canvas.clientHeight;if(!b)return[0,h];
+ const sx=Math.max(1,b.maxX-b.minX),sy=Math.max(1,b.maxY-b.minY),padL=Math.max(60,w*.09),padR=Math.max(90,w*.11),padT=90,padB=70;
+ const scale=Math.min((w-padL-padR)/sx,(h-padT-padB)/sy)*state.zoom,uw=sx*scale,uh=sy*scale,left=padL+(w-padL-padR-uw)/2,top=padT+(h-padT-padB-uh)/2;
+ return[left+(x-b.minX)*scale,top+uh-(y-b.minY)*scale]
 }
-function trimNum(v){
-  if(Math.abs(v)<1e-9)v=0;
-  return Number(v.toFixed(3)).toString();
+function arrow(x,y,a){
+ const z=5;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-z*Math.cos(a-.45),y-z*Math.sin(a-.45));ctx.lineTo(x-z*Math.cos(a+.45),y-z*Math.sin(a+.45));ctx.closePath();ctx.fill()
 }
-function axes(w,h){
-  const p=world(0,0);
-  const b=state.result?.bounds;
-  if(!b)return;
-
-  ctx.save();
-  ctx.strokeStyle='#344656';
-  ctx.fillStyle='#718398';
-  ctx.lineWidth=1;
-  ctx.setLineDash([]);
-  ctx.font='9px Consolas, monospace';
-
-  // Main CNC axes
-  if(p[1]>=0&&p[1]<=h){
-    ctx.beginPath();ctx.moveTo(0,p[1]);ctx.lineTo(w,p[1]);ctx.stroke();
-  }
-  if(p[0]>=0&&p[0]<=w){
-    ctx.beginPath();ctx.moveTo(p[0],0);ctx.lineTo(p[0],h);ctx.stroke();
-  }
-
-  // Dimension ticks and numeric values on X axis.
-  const xStep=niceStep(Math.max(1,b.maxX-b.minX));
-  const x0=Math.ceil(b.minX/xStep)*xStep;
-  for(let v=x0;v<=b.maxX+1e-9;v+=xStep){
-    const q=world(v,0)[0];
-    if(q<0||q>w)continue;
-    if(p[1]>=0&&p[1]<=h){
-      ctx.strokeStyle='#526576';
-      ctx.beginPath();ctx.moveTo(q,p[1]-4);ctx.lineTo(q,p[1]+4);ctx.stroke();
-      ctx.fillStyle='#718398';
-      ctx.fillText(trimNum(v),Math.min(w-28,Math.max(2,q-8)),Math.min(h-4,p[1]+14));
-    }
-  }
-
-  // Dimension ticks and numeric values on Y/Z axis.
-  const yStep=niceStep(Math.max(1,b.maxY-b.minY));
-  const y0=Math.ceil(b.minY/yStep)*yStep;
-  for(let v=y0;v<=b.maxY+1e-9;v+=yStep){
-    const q=world(0,v)[1];
-    if(q<0||q>h)continue;
-    if(p[0]>=0&&p[0]<=w){
-      ctx.strokeStyle='#526576';
-      ctx.beginPath();ctx.moveTo(p[0]-4,q);ctx.lineTo(p[0]+4,q);ctx.stroke();
-      ctx.fillStyle='#718398';
-      ctx.fillText(trimNum(v),Math.min(w-34,Math.max(2,p[0]+7)),Math.max(10,q-5));
-    }
-  }
-
-  // Actual CNC origin marker.
-  if(p[0]>=0&&p[0]<=w&&p[1]>=0&&p[1]<=h){
-    ctx.fillStyle='#fff';
-    ctx.beginPath();ctx.arc(p[0],p[1],3,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#38a9ff';
-    ctx.beginPath();
-    ctx.moveTo(p[0]-9,p[1]);ctx.lineTo(p[0]+9,p[1]);
-    ctx.moveTo(p[0],p[1]-9);ctx.lineTo(p[0],p[1]+9);
-    ctx.stroke();
-    ctx.fillStyle='#a3b3c3';
-    ctx.fillText(state.mode==='turning'?'X0 Z0':'X0 Y0',p[0]+9,p[1]-8);
-  }
-
-  ctx.fillStyle='#8da0b4';
-  ctx.fillText('X',w-18,Math.max(12,Math.min(h-5,p[1]-6)));
-  ctx.fillText(state.mode==='turning'?'Z':'Y',Math.min(w-12,Math.max(4,p[0]+6)),12);
-  ctx.restore();
+function textBox(t,x,y,color="#f0f4f8"){ctx.font="bold 11px Consolas,monospace";const w=ctx.measureText(t).width+10;ctx.fillStyle="rgba(8,13,18,.96)";ctx.fillRect(x-w/2,y-9,w,18);ctx.fillStyle=color;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(t,x,y);return{x:x-w/2,y:y-9,w,h:18}}
+function dimH(x1,x2,y,label,ey1,ey2,color="#e0e7ee"){
+ if(Math.abs(x2-x1)<14)return;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x1,ey1);ctx.lineTo(x1,y);ctx.moveTo(x2,ey2);ctx.lineTo(x2,y);ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();arrow(x1,y,0);arrow(x2,y,Math.PI);textBox(label,(x1+x2)/2,y,color)
+}
+function dimV(y1,y2,x,label,ex1,ex2,color="#e0e7ee"){
+ if(Math.abs(y2-y1)<14)return;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ex1,y1);ctx.lineTo(x,y1);ctx.moveTo(ex2,y2);ctx.lineTo(x,y2);ctx.moveTo(x,y1);ctx.lineTo(x,y2);ctx.stroke();arrow(x,y1,Math.PI/2);arrow(x,y2,-Math.PI/2);ctx.save();ctx.translate(x,(y1+y2)/2);ctx.rotate(-Math.PI/2);textBox(label,0,0,color);ctx.restore()
+}
+function drawDimensions(){
+ const r=state.result,b=r?.bounds;if(!b)return;const w=canvas.clientWidth,h=canvas.clientHeight;
+ const L=world(b.minX,b.minY)[0],R=world(b.maxX,b.minY)[0],T=world(b.minX,b.maxY)[1],B=world(b.minX,b.minY)[1],gap=28;
+ ctx.save();ctx.setLineDash([]);
+ if(b.maxX-b.minX>1)dimH(L,R,T-35,`X ${fmt(b.maxX-b.minX)}`,T,T,"#f5c451");
+ if(b.maxY-b.minY>1)dimV(T,B,L-35,`Y ${fmt(b.maxY-b.minY)}`,L,L,"#f5c451");
+ const hs=new Set(),vs=new Set(),rs=new Set(),segs=r.segments;
+ let hn=1,vn=1;
+ for(const s of segs){
+   if(s.rapid)continue;const x1=s.x,y1=s.y,x2=s.x2,y2=s.y2,dx=Math.abs(x2-x1),dy=Math.abs(y2-y1);
+   if(s.meta?.arc){
+     const rr=s.meta.arcRadius;if(!rr||rs.has(s.line))continue;rs.add(s.line);
+     const m=s.meta,mid=m.arcStart+m.arcSweep/2,q=world(m.arcCenter.x+Math.cos(mid)*rr,m.arcCenter.y+Math.sin(mid)*rr),c=world(m.arcCenter.x,m.arcCenter.y);
+     let tx=q[0]+(q[0]-c[0])*0.8,ty=q[1]+(q[1]-c[1])*0.8;tx=Math.max(55,Math.min(w-55,tx));ty=Math.max(25,Math.min(h-25,ty));
+     ctx.strokeStyle="#f87171";ctx.fillStyle="#f87171";ctx.beginPath();ctx.moveTo(q[0],q[1]);ctx.lineTo(tx,ty);ctx.stroke();arrow(q[0],q[1],Math.atan2(q[1]-ty,q[0]-tx));textBox(`R ${fmt(rr)}`,tx,ty,"#f87171");continue;
+   }
+   const a=world(x1,y1),c=world(x2,y2);
+   if(dy<1e-7&&dx>1){
+     const key=`${Math.min(x1,x2)}-${Math.max(x1,x2)}`;if(hs.has(key))continue;hs.add(key);dimH(a[0],c[0],T-65-hn*28,`X ${fmt(dx)}`,a[1],c[1]);hn++;
+   }else if(dx<1e-7&&dy>1){
+     const key=`${Math.min(y1,y2)}-${Math.max(y1,y2)}`;if(vs.has(key))continue;vs.add(key);dimV(a[1],c[1],L-65-vn*28,`Y ${fmt(dy)}`,a[0],c[0]);vn++;
+   }else{
+     // Không đo chiều dài đường xiên: chỉ đo X/Y chiếu như bản vẽ kỹ thuật.
+     if(dx>1){const y=B+45+hn*25;dimH(a[0],c[0],y,`X ${fmt(dx)}`,a[1],c[1]);hn++}
+     if(dy>1){const x=R+45+vn*25;dimV(a[1],c[1],x,`Y ${fmt(dy)}`,a[0],c[0]);vn++}
+   }
+ }
+ ctx.restore()
+}
+function axes(){
+ const w=canvas.clientWidth,h=canvas.clientHeight;
+ ctx.save();ctx.strokeStyle="#e7edf5";ctx.fillStyle="#e7edf5";ctx.lineWidth=1.4;
+ const x0=w-105,y0=65;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0+55,y0);ctx.stroke();ctx.fillStyle="#f87171";ctx.beginPath();ctx.moveTo(x0+65,y0);ctx.lineTo(x0+51,y0-6);ctx.lineTo(x0+51,y0+6);ctx.fill();ctx.fillStyle="#38a9ff";ctx.beginPath();ctx.moveTo(x0,y0-10);ctx.lineTo(x0-6,y0+4);ctx.lineTo(x0+6,y0+4);ctx.fill();ctx.fillStyle="#dbe5ed";ctx.font="11px Consolas";ctx.fillText("X",x0+70,y0+4);ctx.fillText(state.mode==="turning"?"Z":"Y",x0-4,y0-16);ctx.fillText(state.mode==="turning"?"X0 Z0":"X0 Y0",x0+8,y0+26);ctx.restore()
 }
 function draw(){
-  const w=canvas.clientWidth,h=canvas.clientHeight;
-  ctx.clearRect(0,0,w,h);
-  ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);
-  const r=state.result;
-  if(!r){return}
-
-  // Vẽ toolpath. Cung G02/G03 được renderer bằng ARC thật,
-  // không còn biến thành hình gấp khúc trên màn hình.
-  ctx.setLineDash([]);
-  let i=0;
-  while(i<r.segments.length){
-    const s=r.segments[i];
-    const selected=state.selectedLine===s.line;
-    ctx.strokeStyle=selected?'#ffffff':(COLORS[s.g]||'#8290a1');
-    ctx.lineWidth=selected?2.7:1.65;
-
-    if(s.meta?.arc && s.meta.arcCenter){
-      const line=s.line, m=s.meta;
-      let j=i+1;
-      while(j<r.segments.length && r.segments[j].line===line && r.segments[j].meta?.arc) j++;
-
-      // ARC RENDERER V4: derive the screen angles from the actual transformed
-      // endpoints instead of reusing Cartesian angles. This removes the
-      // common Y-axis inversion error that makes G02/G03 appear on the wrong side.
-      const c=world(m.arcCenter.x,m.arcCenter.y);
-      const sp=world(m.arcStartPoint.x,m.arcStartPoint.y);
-      const ep=world(m.arcEndPoint.x,m.arcEndPoint.y);
-      const rr=Math.hypot(sp[0]-c[0],sp[1]-c[1]);
-      let a0=Math.atan2(sp[1]-c[1],sp[0]-c[0]);
-      let a1=Math.atan2(ep[1]-c[1],ep[0]-c[0]);
-
-      // CNC G02 is clockwise in machine coordinates (Y-up). Because the
-      // canvas has Y-down, the visible direction is represented by the
-      // opposite Canvas anticlockwise flag.
-      const anticlockwise=!m.cw;
-      const tau=Math.PI*2;
-      if(anticlockwise){
-        while(a1>a0)a1-=tau;
-      }else{
-        while(a1<a0)a1+=tau;
-      }
-      // Preserve the exact sweep calculated by the CNC engine, including
-      // the major/minor choice from signed R/CR.
-      const desired=Math.abs(m.arcSweep||0);
-      if(desired>Math.PI*1.999){
-        a1=a0+(anticlockwise?-desired:desired);
-      }else if(desired>0){
-        const sign=anticlockwise?-1:1;
-        a1=a0+sign*Math.min(desired,tau);
-      }
-
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.arc(c[0],c[1],rr,a0,a1,anticlockwise);
-      ctx.stroke();
-      i=j;
-      continue;
-    }
-
-    const a=world(s.x,s.y),b=world(s.x2,s.y2);
-    ctx.setLineDash(s.rapid?[6,5]:[]);
-    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
-    if(i===state.step-1){
-      ctx.setLineDash([]);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(b[0],b[1],4,0,Math.PI*2);ctx.fill();
-    }
-    i++;
-  }
-  ctx.setLineDash([]);
-  axes(w,h);
+ const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle="#080d12";ctx.fillRect(0,0,w,h);if(!state.result)return;
+ if(state.grid){ctx.strokeStyle="rgba(100,130,150,.10)";ctx.lineWidth=1;for(let x=0;x<w;x+=35){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}for(let y=0;y<h;y+=35){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}}
+ for(const s of state.result.segments){
+   const a=world(s.x,s.y),b=world(s.x2,s.y2),sel=state.selectedLine===s.line;
+   ctx.strokeStyle=sel?"#fff":C[s.g]||"#9aa7b5";ctx.lineWidth=sel?3:1.8;ctx.setLineDash(s.rapid?[6,5]:[]);
+   ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+ }
+ ctx.setLineDash([]);drawDimensions();axes()
 }
-function setMode(m){state.mode=m;state.autoFit=true;$('#millingBtn').classList.toggle('active',m==='milling');$('#turningBtn').classList.toggle('active',m==='turning');$('#viewTitle').textContent=m==='turning'?'2D • LATHE VIEW (X-Z)':'2D • TOP VIEW (X-Y)';$('#viewSub').textContent=m==='turning'?'Biên dạng tiện X/Z • controller-aware':'Toolpath X/Y • live parser';$('#coordYLabel').textContent=m==='turning'?'Z':'Y';parse()}
-function reset(){clearInterval(state.timer);state.running=false;state.paused=false;state.step=0;state.selectedLine=null;$('#metricState').textContent='Sẵn sàng';$('#statusText').textContent='Sẵn sàng • CNC Studio Web v3';draw()}
-function keepCodeLineVisible(n){
-  if(!n)return;
-  const lh=parseFloat(getComputedStyle(code).lineHeight)||19;
-  const top=(n-1)*lh;
-  const bottom=top+lh;
-  const viewTop=code.scrollTop;
-  const viewBottom=viewTop+code.clientHeight;
-  const margin=lh*3;
-  if(top<viewTop+margin) code.scrollTop=Math.max(0,top-margin);
-  else if(bottom>viewBottom-margin) code.scrollTop=Math.max(0,bottom-code.clientHeight+margin);
-  $('#lineNumbers').scrollTop=code.scrollTop;
-}
-function run(){parse();if(!state.result.segments.length)return;state.running=true;state.paused=false;state.step=0;state.selectedLine=null;$('#metricState').textContent='Đang chạy';$('#statusText').textContent='Đang mô phỏng G-code';clearInterval(state.timer);state.timer=setInterval(()=>{if(state.paused)return;state.step++;const seg=state.result.segments[state.step-1];state.selectedLine=seg?.line||null;if(state.selectedLine)keepCodeLineVisible(state.selectedLine);draw();if(state.step>=state.result.segments.length){clearInterval(state.timer);state.running=false;$('#metricState').textContent='Hoàn tất';$('#statusText').textContent='Mô phỏng hoàn tất'}},30)}
-function dl(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
-code.addEventListener('input',()=>{state.autoFit=true;updateLines();$('#dirty').textContent='● Chưa lưu';parse()});code.addEventListener('keyup',cursor);code.addEventListener('click',cursor);code.addEventListener('scroll',()=>$('#lineNumbers').scrollTop=code.scrollTop);
-$('#controller').onchange=e=>{state.controller=e.target.value;state.autoFit=true;parse()};$('#runBtn').onclick=run;$('#pauseBtn').onclick=()=>{state.paused=!state.paused;$('#metricState').textContent=state.paused?'Tạm dừng':'Đang chạy'};$('#stopBtn').onclick=reset;$('#resetBtn').onclick=reset;$('#stepBtn').onclick=()=>{if(!state.result)parse();state.step=Math.min(state.step+1,state.result.segments.length);state.selectedLine=state.result.segments[state.step-1]?.line||null;if(state.selectedLine)keepCodeLineVisible(state.selectedLine);$('#metricState').textContent='Bước';draw()};$('#millingBtn').onclick=()=>setMode('milling');$('#turningBtn').onclick=()=>setMode('turning');$('#fitBtn').onclick=()=>{state.autoFit=true;state.panX=0;state.panY=0;parse()};$('#newBtn').onclick=()=>{code.value='';updateLines();reset();state.autoFit=true;parse()};$('#saveBtn').onclick=()=>dl(state.mode==='turning'?'turning.nc':'program.nc',code.value);$('#openBtn').onclick=()=>$('#fileInput').click();$('#fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{code.value=r.result;updateLines();state.autoFit=true;parse();$('#dirty').textContent='● Đã tải '+f.name};r.readAsText(f)};
-let drag=false,lx=0,ly=0;canvas.addEventListener('click',e=>{if(drag)return;const line=pathHitTest(e.clientX,e.clientY);if(line)gotoLine(line);});canvas.addEventListener('pointerdown',e=>{if(!(e.button===1||e.button===2||e.shiftKey||e.ctrlKey))return;e.preventDefault();state.autoFit=false;drag=true;lx=e.clientX;ly=e.clientY;canvas.classList.add('panning')});window.addEventListener('pointerup',()=>{drag=false;canvas.classList.remove('panning')});window.addEventListener('pointermove',e=>{if(!drag)return;state.panX+=e.clientX-lx;state.panY+=e.clientY-ly;lx=e.clientX;ly=e.clientY;draw()});canvas.oncontextmenu=e=>e.preventDefault();canvas.addEventListener('dblclick',()=>{$('#fitBtn').click()});window.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='s'){e.preventDefault();$('#saveBtn').click()}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();run()}if(e.key==='F5'){e.preventDefault();parse()}});new ResizeObserver(resize).observe($('.canvas-wrap'));updateLines();parse();resize();
+function run(){if(!state.result)parse();state.step=0;state.running=true;state.paused=false;$("#metricState").textContent="Đang chạy";clearInterval(state.timer);state.timer=setInterval(()=>{if(state.paused)return;const s=state.result.segments[state.step++];if(s){selectLine(s.line)}else{clearInterval(state.timer);state.running=false;$("#metricState").textContent="Hoàn tất"}},35)}
+function reset(){clearInterval(state.timer);state.running=false;state.paused=false;state.step=0;state.selectedLine=null;$("#metricState").textContent="Sẵn sàng";draw()}
+function setMode(m){state.mode=m;$("#millingBtn").classList.toggle("active",m==="milling");$("#turningBtn").classList.toggle("active",m==="turning");$("#viewTitle").textContent="2D";$("#coordYLabel").textContent=m==="turning"?"Z":"Y";parse()}
+function dl(name,data){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"text/plain"}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+document.querySelectorAll(".menu-btn").forEach(b=>b.onclick=e=>{document.querySelectorAll(".menu-btn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".dropdown").forEach(x=>x.classList.remove("open"));b.classList.add("active");$("#menu-"+b.dataset.menu).classList.add("open")});
+document.addEventListener("click",e=>{if(!e.target.closest(".menubar")){document.querySelectorAll(".menu-btn").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".dropdown").forEach(x=>x.classList.remove("open"))}});
+$("#controller").onchange=e=>{state.controller=e.target.value;parse()};
+$("#newBtn").onclick=$("#mNew").onclick=()=>{code.value="";updateLines();parse()};
+$("#openBtn").onclick=$("#mOpen").onclick=()=>$("#fileInput").click();
+$("#fileInput").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{code.value=rd.result;updateLines();parse()};rd.readAsText(f)};
+$("#saveBtn").onclick=$("#mSave").onclick=()=>dl("program.nc",code.value);
+$("#runBtn").onclick=$("#mRun").onclick=run;$("#pauseBtn").onclick=$("#mPause").onclick=()=>{state.paused=!state.paused;$("#metricState").textContent=state.paused?"Tạm dừng":"Đang chạy"};
+$("#stopBtn").onclick=$("#mStop").onclick=reset;$("#resetBtn").onclick=$("#mReset").onclick=reset;$("#stepBtn").onclick=$("#mStep").onclick=()=>{if(!state.result)parse();const s=state.result.segments[state.step++];if(s)selectLine(s.line);else state.step=state.result.segments.length};
+$("#millingBtn").onclick=()=>setMode("milling");$("#turningBtn").onclick=()=>setMode("turning");$("#fitBtn").onclick=$("#mFit").onclick=()=>{state.zoom=1;draw()};$("#gridBtn").onclick=$("#mGrid").onclick=()=>{state.grid=!state.grid;$("#gridBtn").classList.toggle("active",state.grid);draw()};
+$("#mClear").onclick=()=>{code.value="";updateLines();parse()};$("#mCheck").onclick=()=>diagnostics();
+code.addEventListener("input",()=>{updateLines();parse();$("#dirty").textContent="● Chưa lưu"});code.addEventListener("keyup",cursor);code.addEventListener("click",cursor);code.addEventListener("scroll",()=>$("#lineNumbers").scrollTop=code.scrollTop);
+canvas.addEventListener("click",e=>{const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;let best=null,bd=12;for(const s of state.result?.segments||[]){const a=world(s.x,s.y),b=world(s.x2,s.y2),dx=b[0]-a[0],dy=b[1]-a[1],t=Math.max(0,Math.min(1,((mx-a[0])*dx+(my-a[1])*dy)/(dx*dx+dy*dy||1))),px=a[0]+t*dx,py=a[1]+t*dy,d=Math.hypot(mx-px,my-py);if(d<bd){bd=d;best=s}}if(best)selectLine(best.line)});
+window.addEventListener("resize",resize);
+document.addEventListener("keydown",e=>{if(e.ctrlKey&&e.key==="s"){e.preventDefault();dl("program.nc",code.value)}if(e.ctrlKey&&e.key==="Enter"){e.preventDefault();run()}});
+code.value=sample;updateLines();resize();parse();
 })();
