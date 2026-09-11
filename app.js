@@ -17,10 +17,25 @@ function parse(){
 function resize(){const r=canvas.getBoundingClientRect(),d=Math.max(1,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw()}
 function geometryBounds(){
  const segs=(state.result?.segments||[]).filter(s=>s.g!=='G00');
- const use=segs.length?segs:state.result?.segments||[];
+ const use=segs.length?segs:(state.result?.segments||[]);
  if(!use.length)return null;
  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
- for(const s of use){minX=Math.min(minX,s.x,s.x2);maxX=Math.max(maxX,s.x,s.x2);minY=Math.min(minY,s.y,s.y2);maxY=Math.max(maxY,s.y,s.y2)}
+ const add=(x,y)=>{minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)};
+ for(const s of use){
+   add(s.x,s.y); add(s.x2,s.y2);
+   const m=s.meta;
+   if(m?.arcCenter){
+     const c=m.arcCenter, r=Math.abs(m.arcRadius||Math.hypot(s.x-c.x,s.y-c.y));
+     const a0=Math.atan2(s.y-c.y,s.x-c.x), sweep=m.arcSweep||0;
+     const angles=[a0,a0+sweep];
+     for(const a of [0,Math.PI/2,Math.PI,Math.PI*1.5]){
+       let t=a-a0;
+       if(sweep>=0){while(t<0)t+=Math.PI*2; if(t<=sweep+1e-9)add(c.x+r*Math.cos(a),c.y+r*Math.sin(a));}
+       else {while(t>0)t-=Math.PI*2; if(t>=sweep-1e-9)add(c.x+r*Math.cos(a),c.y+r*Math.sin(a));}
+     }
+     for(const a of angles)add(c.x+r*Math.cos(a),c.y+r*Math.sin(a));
+   }
+ }
  if(!Number.isFinite(minX))return null;
  if(Math.abs(maxX-minX)<1e-9){minX-=1;maxX+=1} if(Math.abs(maxY-minY)<1e-9){minY-=1;maxY+=1}
  return {minX,maxX,minY,maxY};
@@ -41,39 +56,61 @@ function drawArrow(x1,y1,x2,y2){const a=Math.atan2(y2-y1,x2-x1),s=5;ctx.beginPat
 function drawDimH(x1,x2,y,refY,label){ctx.save();ctx.strokeStyle=dimColor;ctx.fillStyle=dimText;ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x1,refY);ctx.lineTo(x1,y);ctx.moveTo(x2,refY);ctx.lineTo(x2,y);ctx.stroke();ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();drawArrow(x1,y,x2,y);drawArrow(x2,y,x1,y);ctx.font='12px Consolas,monospace';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(label,(x1+x2)/2,y-5);ctx.restore()}
 function drawDimV(x,y1,y2,refX,label){ctx.save();ctx.strokeStyle=dimColor;ctx.fillStyle=dimText;ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(refX,y1);ctx.lineTo(x,y1);ctx.moveTo(refX,y2);ctx.lineTo(x,y2);ctx.stroke();ctx.beginPath();ctx.moveTo(x,y1);ctx.lineTo(x,y2);ctx.stroke();drawArrow(x,y1,x,y2);drawArrow(x,y2,x,y1);ctx.font='12px Consolas,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.translate(x-7,(y1+y2)/2);ctx.rotate(-Math.PI/2);ctx.fillText(label,0,0);ctx.restore()}
 function dimensions(){
- const v=state.view;if(!v)return;const b=v.b;const p1=world(b.minX,b.maxY),p2=world(b.maxX,b.minY);
- const top=Math.max(22,p1[1]-32), left=Math.max(28,p1[0]-46), bottom=Math.min(v.h-18,p2[1]+30), right=Math.min(v.w-18,p2[0]+34);
- drawDimH(p1[0],p2[0],top,p1[1],trim(b.maxX-b.minX));
- drawDimV(left,p1[1],p2[1],p1[0],trim(b.maxY-b.minY));
- // A second bottom/right dimension is only shown when it fits outside and is useful for a non-square profile.
- if(Math.abs((b.maxX-b.minX)-(b.maxY-b.minY))>1e-6 && bottom-p2[1]>12) drawDimH(p1[0],p2[0],bottom,p2[1],trim(b.maxX-b.minX));
+ const v=state.view;if(!v)return; const b=v.b;
+ const pTL=world(b.minX,b.maxY), pBR=world(b.maxX,b.minY);
+ const gap=18;
+ // Only draw dimensions in the reserved outer margins. Never place a dimension line through the part.
+ const topY=Math.max(12,pTL[1]-30);
+ const leftX=Math.max(16,pTL[0]-42);
+ const bottomY=Math.min(v.h-12,pBR[1]+30);
+ const rightX=Math.min(v.w-12,pBR[0]+42);
+ if(pTL[1]-topY>=gap) drawDimH(pTL[0],pBR[0],topY,pTL[1],trim(b.maxX-b.minX));
+ if(pTL[0]-leftX>=gap) drawDimV(leftX,pTL[1],pBR[1],pTL[0],trim(b.maxY-b.minY));
+ if(bottomY-pBR[1]>=gap && Math.abs((b.maxX-b.minX)-(b.maxY-b.minY))>1e-6) drawDimH(pTL[0],pBR[0],bottomY,pBR[1],trim(b.maxX-b.minX));
+ if(rightX-pBR[0]>=gap && Math.abs((b.maxX-b.minX)-(b.maxY-b.minY))>1e-6) drawDimV(rightX,pTL[1],pBR[1],pBR[0],trim(b.maxY-b.minY));
 }
 function drawArc(s){
- const m=s.meta;if(!m?.arcCenter)return false;
- const c=world(m.arcCenter.x,m.arcCenter.y),sp=world(m.arcStartPoint.x,m.arcStartPoint.y),ep=world(m.arcEndPoint.x,m.arcEndPoint.y);
- const r=Math.hypot(sp[0]-c[0],sp[1]-c[1]);if(!Number.isFinite(r)||r<.5)return false;
- const a0=Math.atan2(sp[1]-c[1],sp[0]-c[0]),a1=Math.atan2(ep[1]-c[1],ep[0]-c[0]);
- // Canvas Y is down, so a machine-clockwise G02 becomes canvas counter-clockwise.
- const anticlockwise=!!m.cw;
- const tau=Math.PI*2;let end=a1;
- if(anticlockwise){while(end>a0)end-=tau}else{while(end<a0)end+=tau}
- const sweep=Math.abs(m.arcSweep||0);if(sweep>1e-8)end=a0+(anticlockwise?-sweep:sweep);
- ctx.beginPath();ctx.arc(c[0],c[1],r,a0,end,anticlockwise);ctx.stroke();return true;
+ const m=s.meta;
+ if(!m?.arcCenter)return false;
+ const line=s.line, r=state.result?.segments||[];
+ const parts=[];
+ for(const q of r){if(q.line===line&&q.meta?.arc&&q.meta.arcCenter)parts.push(q)}
+ if(!parts.length)return false;
+ ctx.beginPath();
+ let first=true;
+ for(const q of parts){
+   const a=world(q.x,q.y), b=world(q.x2,q.y2);
+   if(first){ctx.moveTo(a[0],a[1]);first=false}
+   ctx.lineTo(b[0],b[1]);
+ }
+ ctx.stroke();
+ return true;
 }
 function draw(){
  const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);state.view=null;
- const r=state.result;if(!r||!r.segments.length){$('#emptyHint').classList.remove('hidden');return}$('#emptyHint').classList.add('hidden');setupView();
+ const r=state.result;if(!r||!r.segments.length){return}setupView();
  const seen=new Set();let i=0;
  while(i<r.segments.length){
    const s=r.segments[i], selected=state.selectedLine===s.line, tool=s.meta?.state?.tool??1;
    ctx.strokeStyle=selected?'#fff':colorForTool(tool);ctx.lineWidth=selected?2.8:1.7;ctx.globalAlpha=s.g==='G00'?.55:1;ctx.setLineDash(s.g==='G00'?[6,5]:[]);
-   if(s.meta?.arc&&s.meta.arcCenter){const line=s.line;let j=i+1;while(j<r.segments.length&&r.segments[j].line===line&&r.segments[j].meta?.arc)j++;drawArc(s);i=j;ctx.globalAlpha=1;continue}
+   if(s.meta?.arc&&s.meta.arcCenter){const line=s.line;let j=i+1;while(j<r.segments.length&&r.segments[j].line===line&&r.segments[j].meta?.arc)j++;drawArc(s);ctx.globalAlpha=1;const end=r.segments[j-1];const ep=world(end.x2,end.y2);ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(ep[0],ep[1],2.1,0,Math.PI*2);ctx.fill();i=j;continue}
    const a=world(s.x,s.y),b=world(s.x2,s.y2);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
    if(!seen.has(`${s.x2}|${s.y2}|${s.line}`)){ctx.globalAlpha=1;ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(b[0],b[1],2.1,0,Math.PI*2);ctx.fill();seen.add(`${s.x2}|${s.y2}|${s.line}`)}
    i++;
  }
- ctx.globalAlpha=1;ctx.setLineDash([]);dimensions();
+ ctx.globalAlpha=1;ctx.setLineDash([]);
+ drawCoordinateScale();
+ dimensions();
  if(state.selectedPoint) drawSelectedPoint();
+}
+function drawCoordinateScale(){
+ const v=state.view;if(!v)return; const b=v.b;
+ ctx.save(); ctx.strokeStyle='rgba(150,165,180,.10)'; ctx.fillStyle='rgba(160,175,190,.32)'; ctx.lineWidth=1; ctx.font='9px Consolas,monospace';
+ const spanX=b.maxX-b.minX, spanY=b.maxY-b.minY;
+ const step=Math.max(10,Math.pow(10,Math.floor(Math.log10(Math.max(spanX,spanY)/5))));
+ for(let x=Math.ceil(b.minX/step)*step;x<=b.maxX+1e-9;x+=step){const p=world(x,b.minY);ctx.beginPath();ctx.moveTo(p[0],Math.max(0,p[1]-5));ctx.lineTo(p[0],Math.min(v.h,p[1]+5));ctx.stroke();ctx.textAlign='center';ctx.textBaseline='top';if(p[1]+7<v.h)ctx.fillText(trim(x),p[0],p[1]+7)}
+ for(let y=Math.ceil(b.minY/step)*step;y<=b.maxY+1e-9;y+=step){const p=world(b.minX,y);ctx.beginPath();ctx.moveTo(Math.max(0,p[0]-5),p[1]);ctx.lineTo(Math.min(v.w,p[0]+5),p[1]);ctx.stroke();ctx.textAlign='right';ctx.textBaseline='middle';if(p[0]-7>0)ctx.fillText(trim(y),p[0]-7,p[1])}
+ ctx.restore();
 }
 function drawSelectedPoint(){const p=world(state.selectedPoint.x,state.selectedPoint.y);ctx.save();ctx.fillStyle='#fff';ctx.strokeStyle='#31a8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p[0],p[1],5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()}
 function hideInfo(){$('#pointInfo').classList.add('hidden');state.selectedPoint=null}
