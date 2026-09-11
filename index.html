@@ -3,24 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#080d12">
+<meta name="theme-color" content="#070b10">
 <title>CNC Studio</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="app">
-<nav class="menubar">
-<button id="menuFile">Tệp</button><button id="menuEdit">Chỉnh sửa</button><button id="menuView">Xem</button><button id="menuSim">Mô phỏng</button><button id="menuCheck">Kiểm tra</button><button id="menuLearn">Học CNC</button><span class="grow"></span><span id="statusText">Sẵn sàng</span>
-</nav>
-<section class="toolbar">
-<button id="newBtn">＋ <span>Mới</span></button><button id="openBtn">📂 <span>Mở</span></button><button id="saveBtn">💾 <span>Tải</span></button><span class="sep"></span>
-<button id="runBtn" class="run">▶ <span>Chạy</span></button><button id="pauseBtn">Ⅱ <span>Dừng</span></button><button id="stopBtn">■ <span>Stop</span></button><button id="stepBtn">⏭ <span>Bước</span></button><button id="resetBtn">↻ <span>Reset</span></button><span class="sep"></span>
-<button id="millingBtn" class="mode active">PHAY</button><button id="turningBtn" class="mode">TIỆN</button><button id="fitBtn" class="fit">⛶ <span>Fit</span></button><input id="fileInput" type="file" accept=".nc,.cnc,.gcode,.txt" hidden>
-</section>
-<main class="workspace">
-<section class="editor-panel"><div class="panel-head"><span class="tab">program.nc</span></div><div class="editor-wrap"><div id="lineNumbers" class="line-numbers"></div><textarea id="code" spellcheck="false" wrap="off" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea></div><div class="editor-footer"><span id="cursorInfo">Dòng 1 / 1</span><span id="dirty">● Chưa lưu</span></div></section>
-<section class="view-panel"><div class="view-head"><strong id="viewTitle">2D</strong><div class="coords"><b>X</b> <span id="xPos">0.000</span><b id="yLabel">Y</b> <span id="yPos">0.000</span><b>Z</b> <span id="zPos">5.000</span></div></div><div class="canvas-wrap"><canvas id="canvas"></canvas><div id="pointInfo" class="point-info" hidden></div><div id="emptyHint" class="empty-hint">Nhập G-code để xem hình</div></div><div class="view-footer"><span>● Điểm tọa độ</span><span>Click hình để chọn dòng code</span></div></section>
-</main>
+  <nav class="menubar">
+    <div class="menu-items">
+      <button id="menuFile">Tệp</button><button id="menuEdit">Chỉnh sửa</button><button id="menuView">Xem</button><button id="menuSim">Mô phỏng</button><button id="menuCheck">Kiểm tra</button><button id="menuLearn">Học CNC</button>
+    </div>
+    <span class="grow"></span><span id="statusText">Sẵn sàng</span>
+  </nav>
+  <section class="toolbar">
+    <button id="newBtn">＋ Mới</button><button id="openBtn">Mở</button><button id="saveBtn">Tải</button>
+    <span class="sep"></span><button id="runBtn" class="run">▶ Chạy</button><button id="pauseBtn">Ⅱ Dừng</button><button id="stopBtn">■ Stop</button><button id="stepBtn">⏭ Bước</button><button id="resetBtn">↻ Reset</button>
+    <span class="sep"></span><button id="millingBtn" class="mode active">PHAY</button><button id="turningBtn" class="mode">TIỆN</button>
+    <input id="fileInput" type="file" accept=".nc,.cnc,.gcode,.txt" hidden>
+  </section>
+  <main class="workspace">
+    <section class="editor-panel">
+      <div class="panel-head"><span class="tab">program.txt</span></div>
+      <div class="editor-wrap"><div id="lineNumbers" class="line-numbers"></div><textarea id="code" spellcheck="false" wrap="off" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea></div>
+      <div class="editor-footer"><span id="cursorInfo">Dòng 1 / 1</span><span id="dirty">● Chưa lưu</span></div>
+    </section>
+    <section class="view-panel">
+      <div class="view-head"><strong>2D</strong><span id="coords" class="coords">X 0.000&nbsp;&nbsp;Y 0.000&nbsp;&nbsp;Z 0.000</span></div>
+      <div class="canvas-wrap"><canvas id="canvas"></canvas><div id="pointInfo" class="point-info" hidden></div><div id="emptyHint" class="empty-hint">Nhập G-code để xem hình</div></div>
+    </section>
+  </main>
 </div>
 <script src="cnc-engine.js"></script><script src="app.js"></script>
 </body></html>
