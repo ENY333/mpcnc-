@@ -38,7 +38,7 @@ function stripComments(line){
  line=line.replace(/\/\s*(?=(?:N\s*)?\d|G|M|T|X|Y|Z|A|B|C|U|V|W|F|S|I|J|K|R|P|Q|L|H|D)/gi,' ');
  return line.trim().toUpperCase();
 }
-function expandCR(line){return line.replace(/\bCR\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)/gi,'R$1')}
+function expandCR(line){return line.replace(/\bCR\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)/gi,'R$1')}
 function tokenize(line){
  const s=expandCR(stripComments(line)); const out=[];
  const re=/([A-Z])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)/g; let m;
@@ -156,8 +156,10 @@ function parse(text,options={}){
    }
  }
  for(let i=0;i<lines.length;i++){
-   const raw=lines[i], clean=expandCR(stripComments(raw)); if(!clean||clean==='%')continue;
-   const ws=tokenize(raw); if(!ws.length)continue; const line=i+1;
+   const raw=lines[i], baseClean=stripComments(raw); if(!baseClean||baseClean==='%')continue; const line=i+1;
+   if(/\bCR\s*(?![=])/i.test(baseClean) && /\bCR\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)/i.test(baseClean)){diag(line,'error','CR phải dùng đúng cú pháp CR=giá trị.','CR');continue;}
+   const clean=expandCR(baseClean);
+   const ws=tokenize(clean); if(!ws.length)continue;
    const ns=word(ws,'N'); if(ns!==null)result.events.push({line,type:'sequence',value:ns});
    if(clean.startsWith('/')||s.skip){result.events.push({line,type:'block-skip'});continue}
    // Macro assignment: #100=10, #<DEPTH>=#100-2

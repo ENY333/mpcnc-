@@ -1,49 +1,98 @@
 (()=>{
 'use strict';
-const $=s=>document.querySelector(s), code=$('#code'),canvas=$('#canvas'),ctx=canvas.getContext('2d');
-const state={result:null,mode:'milling',controller:'FANUC',selectedLine:null,selectedPoint:null,running:false,paused:false,timer:null,step:0};
-const TOOL_COLORS=['#38a9ff','#34d399','#f5c451','#f87171','#a78bfa','#fb7185','#22d3ee','#f59e0b'];
-const fmt=v=>Number(v??0).toFixed(3).replace(/\.000$/,'').replace(/(\.\d*[1-9])0+$/,'$1');
-const lines=()=>code.value.replace(/\r/g,'').split('\n');
-const cleanG=g=>g||'MOVE';
-function updateLines(){const a=lines();$('#lineNumbers').innerHTML=a.map((_,i)=>`<div class="${state.selectedLine===i+1?'active':''}">${i+1}</div>`).join('');cursor();}
-function cursor(){const n=code.value.slice(0,code.selectionStart).split('\n').length;$('#cursorInfo').textContent=`Dòng ${n} / ${lines().length}`;}
-function parse(){clearInterval(state.timer);state.running=false;state.paused=false;state.step=0;state.selectedPoint=null;state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:state.controller});const r=state.result;$('#emptyHint').hidden=!!r.segments.length;$('#statusText').textContent=r.errors.length?`Có ${r.errors.length} lỗi`:'Sẵn sàng';updateLines();draw();}
-function bounds(){const b=state.result?.bounds;if(!b)return null;return{minX:Math.min(b.minX,0),maxX:Math.max(b.maxX,0),minY:Math.min(b.minY,0),maxY:Math.max(b.maxY,0)};}
-function scaleInfo(){const b=bounds(),w=canvas.clientWidth,h=canvas.clientHeight;if(!b)return{w,h,s:1,cx:0,cy:0,pad:20};const dx=Math.max(1,b.maxX-b.minX),dy=Math.max(1,b.maxY-b.minY);const pad=Math.max(34,Math.min(w,h)*.075);const sx=(w-pad*2)/dx,sy=(h-pad*2)/dy,s=Math.max(.01,Math.min(sx,sy));return{b,w,h,s,cx:(b.minX+b.maxX)/2,cy:(b.minY+b.maxY)/2,pad};}
-function world(x,y){const q=scaleInfo();return[q.w/2+(x-q.cx)*q.s,q.h/2-(y-q.cy)*q.s];}
-function arrow(x1,y1,x2,y2,size=5){const a=Math.atan2(y2-y1,x2-x1);ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-size*Math.cos(a-.55),y2-size*Math.sin(a-.55));ctx.lineTo(x2-size*Math.cos(a+.55),y2-size*Math.sin(a+.55));ctx.closePath();ctx.fill();}
-const DIM='rgba(180,193,205,.34)',DIMTEXT='rgba(205,215,224,.48)',AXIS='rgba(116,136,153,.42)';
-function dimH(x1,x2,y,refY,label){const a=world(x1,refY),b=world(x2,refY),yy=world(x1,y)[1],xa=a[0],xb=b[0];ctx.strokeStyle=DIM;ctx.fillStyle=DIMTEXT;ctx.lineWidth=.75;ctx.beginPath();ctx.moveTo(xa,a[1]);ctx.lineTo(xa,yy);ctx.moveTo(xb,b[1]);ctx.lineTo(xb,yy);ctx.moveTo(xa,yy);ctx.lineTo(xb,yy);ctx.stroke();arrow(xa,yy,xa+1,yy,4);arrow(xb,yy,xb-1,yy,4);ctx.font='12px Segoe UI,Arial';ctx.textAlign='center';ctx.fillText(label,(xa+xb)/2,yy-6);}
-function dimV(y1,y2,x,refX,label){const a=world(refX,y1),b=world(refX,y2),xx=world(x,y1)[0],ya=a[1],yb=b[1];ctx.strokeStyle=DIM;ctx.fillStyle=DIMTEXT;ctx.lineWidth=.75;ctx.beginPath();ctx.moveTo(a[0],ya);ctx.lineTo(xx,ya);ctx.moveTo(b[0],yb);ctx.lineTo(xx,yb);ctx.moveTo(xx,ya);ctx.lineTo(xx,yb);ctx.stroke();arrow(xx,ya,xx,ya+1,4);arrow(xx,yb,xx,yb-1,4);ctx.save();ctx.translate(xx-7,(ya+yb)/2);ctx.rotate(-Math.PI/2);ctx.font='12px Segoe UI,Arial';ctx.textAlign='center';ctx.fillText(label,0,0);ctx.restore();}
-function leader(text,px,py,tx,ty){ctx.strokeStyle=DIMTEXT;ctx.fillStyle=DIMTEXT;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(tx,ty);ctx.stroke();arrow(tx,ty,px,py,4);ctx.font='12px Segoe UI,Arial';ctx.textAlign='left';ctx.fillText(text,tx+6,ty-4);}
-function arcMeta(s){return s.meta?.arc? s.meta:null;}
-function drawRadiusDims(r){const arcs=[];const seen=new Set();for(const s of r.segments){const m=arcMeta(s);if(!m||seen.has(s.line))continue;seen.add(s.line);arcs.push(s);}const q=scaleInfo();arcs.slice(0,8).forEach(s=>{const m=s.meta,c=world(m.arcCenter.x,m.arcCenter.y),p=world(m.arcStartPoint.x,m.arcStartPoint.y);const dx=p[0]-c[0],dy=p[1]-c[1],L=Math.hypot(dx,dy)||1;let tx,ty;if(p[0]>q.w*.62) {tx=q.w-100;ty=Math.max(35,Math.min(q.h-35,p[1]-35));}else{tx=42;ty=Math.max(35,Math.min(q.h-35,p[1]-35));}leader(`R ${fmt(m.arcRadius)}`,p[0],p[1],tx,ty);});}
-function drawDimensions(){const r=state.result;if(!r?.segments.length)return;const b=r.bounds,dx=b.maxX-b.minX,dy=b.maxY-b.minY;if(dx>0)dimH(b.minX,b.maxX,b.minY-Math.max(16,dy*.10),b.minY,fmt(dx));if(dy>0)dimV(b.minY,b.maxY,b.minX-Math.max(16,dx*.10),b.minX,fmt(dy));
- const hs=[],vs=[],seenH=new Set(),seenV=new Set();for(const s of r.segments){if(arcMeta(s))continue;const sx=s.x2-s.x,sy=s.y2-s.y;if(Math.abs(sy)<1e-6&&Math.abs(sx)>2){const a=Math.min(s.x,s.x2),bb=Math.max(s.x,s.x2),key=`${a.toFixed(3)}|${bb.toFixed(3)}|${s.y.toFixed(3)}`;if(!seenH.has(key)){seenH.add(key);hs.push(s)}}else if(Math.abs(sx)<1e-6&&Math.abs(sy)>2){const a=Math.min(s.y,s.y2),bb=Math.max(s.y,s.y2),key=`${s.x.toFixed(3)}|${a.toFixed(3)}|${bb.toFixed(3)}`;if(!seenV.has(key)){seenV.add(key);vs.push(s)}}}
- const top=[],bottom=[],left=[],right=[];for(const s of hs){if(Math.abs(s.y-b.maxY)<1e-6)top.push(s);else if(Math.abs(s.y-b.minY)<1e-6)bottom.push(s);}for(const s of vs){if(Math.abs(s.x-b.minX)<1e-6)left.push(s);else if(Math.abs(s.x-b.maxX)<1e-6)right.push(s);}
- let lane=0;top.slice(0,3).forEach(s=>dimH(s.x,s.x2,b.maxY+Math.max(18,dy*.10)+lane++*16,s.y,fmt(Math.abs(s.x2-s.x))));bottom.slice(0,2).forEach((s,i)=>{if(Math.abs(s.x2-s.x)-dx<1e-6)return;dimH(s.x,s.x2,b.minY-Math.max(18,dy*.10)+(i+1)*16,s.y,fmt(Math.abs(s.x2-s.x)));});lane=0;left.slice(0,3).forEach(s=>dimV(s.y,s.y2,b.minX-Math.max(18,dx*.10)-lane++*16,s.x,fmt(Math.abs(s.y2-s.y))));right.slice(0,2).forEach((s,i)=>{if(Math.abs(s.y2-s.y)-dy<1e-6)return;dimV(s.y,s.y2,b.maxX+Math.max(18,dx*.10)+(i+1)*16,s.x,fmt(Math.abs(s.y2-s.y)));});drawRadiusDims(r);}
-function commandPoints(){const r=state.result;if(!r)return[];const out=[],seen=new Set(),byLine=new Map();for(const s of r.segments){if(!byLine.has(s.line))byLine.set(s.line,[]);byLine.get(s.line).push(s);}for(const [line,segs] of byLine){const first=segs[0],last=segs[segs.length-1];const pts=[{x:first.x,y:first.y,line,g:first.g,tool:first.meta?.state?.tool??1,z:first.z},{x:last.x2,y:last.y2,line,g:last.g??last.g,tool:last.meta?.state?.tool??1,z:last.z}];for(const p of pts){const k=`${p.x.toFixed(4)}|${p.y.toFixed(4)}|${line}`;if(seen.has(k))continue;seen.add(k);out.push(p);}}return out;}
-function drawPoints(){for(const p of commandPoints()){const q=world(p.x,p.y),sel=state.selectedPoint&&state.selectedPoint.line===p.line&&Math.abs(state.selectedPoint.x-p.x)<1e-6&&Math.abs(state.selectedPoint.y-p.y)<1e-6;ctx.fillStyle=sel?'#fff':'rgba(175,188,200,.32)';ctx.beginPath();ctx.arc(q[0],q[1],sel?3.5:1.7,0,Math.PI*2);ctx.fill();}}
-function drawAxes(){const q=scaleInfo(),b=q.b;if(!b)return;ctx.font='9px Consolas,monospace';ctx.fillStyle=AXIS;ctx.strokeStyle=AXIS;ctx.lineWidth=.6;const ox=world(0,0)[0],oy=world(0,0)[1];if(ox>=0&&ox<=q.w){ctx.beginPath();ctx.moveTo(ox,0);ctx.lineTo(ox,16);ctx.stroke();}if(oy>=0&&oy<=q.h){ctx.beginPath();ctx.moveTo(0,oy);ctx.lineTo(16,oy);ctx.stroke();}const step=niceStep(Math.max(b.maxX-b.minX,b.maxY-b.minY)/5);for(let x=Math.ceil(b.minX/step)*step;x<=b.maxX+1e-6;x+=step){const p=world(x,0);if(p[0]>18&&p[0]<q.w-18){ctx.fillText(fmt(x),p[0]-8,q.h-8);ctx.beginPath();ctx.moveTo(p[0],q.h-14);ctx.lineTo(p[0],q.h-5);ctx.stroke();}}for(let y=Math.ceil(b.minY/step)*step;y<=b.maxY+1e-6;y+=step){const p=world(0,y);if(p[1]>18&&p[1]<q.h-18){ctx.fillText(fmt(y),4,p[1]+3);ctx.beginPath();ctx.moveTo(5,p[1]);ctx.lineTo(14,p[1]);ctx.stroke();}}ctx.fillStyle='#6f8190';ctx.font='10px Segoe UI,Arial';ctx.fillText('X',q.w-14,q.h-8);ctx.fillText('Y',6,12);if(ox>=0&&ox<=q.w&&oy>=0&&oy<=q.h){ctx.fillStyle='#dfe9f2';ctx.beginPath();ctx.arc(ox,oy,3,0,Math.PI*2);ctx.fill();ctx.font='9px Consolas,monospace';ctx.fillStyle='#7d8b98';ctx.fillText('X0 Y0',ox+6,oy-6);}}
-function niceStep(v){const p=Math.pow(10,Math.floor(Math.log10(Math.max(v,1))));const n=v/p;return(n<=1?1:n<=2?2:n<=5?5:10)*p;}
-function draw(){const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);const r=state.result;if(!r?.segments.length)return;drawAxes();let i=0;while(i<r.segments.length){const s=r.segments[i],sel=state.selectedLine===s.line,tool=Number(s.meta?.state?.tool??1),toolColor=TOOL_COLORS[(Math.max(1,tool)-1)%TOOL_COLORS.length];ctx.strokeStyle=sel?'#fff':toolColor;ctx.lineWidth=sel?2.5:1.8;ctx.setLineDash(s.rapid?[5,4]:[]);if(arcMeta(s)){const m=s.meta,c=world(m.arcCenter.x,m.arcCenter.y),sp=world(m.arcStartPoint.x,m.arcStartPoint.y),ep=world(m.arcEndPoint.x,m.arcEndPoint.y),rr=Math.hypot(sp[0]-c[0],sp[1]-c[1]);let a0=Math.atan2(sp[1]-c[1],sp[0]-c[0]),a1=Math.atan2(ep[1]-c[1],ep[0]-c[0]),sw=Number(m.arcSweep)||0;if(Math.abs(sw)<1e-8)sw=m.cw?-Math.PI*2:Math.PI*2;a1=a0+(-Math.sign(sw))*Math.min(Math.abs(sw),Math.PI*2);ctx.beginPath();ctx.arc(c[0],c[1],rr,a0,a1,(-Math.sign(sw))>0);ctx.stroke();let j=i+1;while(j<r.segments.length&&r.segments[j].line===s.line&&arcMeta(r.segments[j]))j++;i=j;continue;}const a=world(s.x,s.y),b=world(s.x2,s.y2);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();if(i===state.step-1){ctx.setLineDash([]);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(b[0],b[1],3.5,0,Math.PI*2);ctx.fill();}i++;}ctx.setLineDash([]);drawDimensions();drawPoints();}
-function resize(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw();}
-function selectLine(n){if(!n)return;state.selectedLine=n;const ls=lines();let pos=0;for(let i=1;i<n;i++)pos+=ls[i-1].length+1;code.focus();code.setSelectionRange(pos,pos+(ls[n-1]||'').length);const lh=parseFloat(getComputedStyle(code).lineHeight)||20;code.scrollTop=Math.max(0,(n-3)*lh);$('#lineNumbers').scrollTop=code.scrollTop;updateLines();draw();}
-function showPoint(p,cx,cy){state.selectedPoint=p;selectLine(p.line);const el=$('#pointInfo'),wrap=$('.canvas-wrap'),rr=wrap.getBoundingClientRect();el.innerHTML=`<b>X</b> ${fmt(p.x)}<br><b>${state.mode==='turning'?'Z':'Y'}</b> ${fmt(p.y)}<br><span class="line">Dòng ${p.line} • ${cleanG(p.g)}</span><br><span class="raw">T${fmt(p.tool)} • Z ${fmt(p.z)}</span>`;el.hidden=false;const x=Math.min(wrap.clientWidth-180,Math.max(8,cx-rr.left+10)),y=Math.min(wrap.clientHeight-92,Math.max(8,cy-rr.top+10));el.style.left=x+'px';el.style.top=y+'px';$('#coords').textContent=`X ${fmt(p.x)}   Y ${fmt(p.y)}   Z ${fmt(p.z)}`;draw();}
-function nearestPoint(mx,my){let best=null,bd=9;for(const p of commandPoints()){const q=world(p.x,p.y),d=Math.hypot(mx-q[0],my-q[1]);if(d<bd){bd=d;best=p;}}return best;}
-function distToSegment(px,py,a,b){const vx=b[0]-a[0],vy=b[1]-a[1],den=vx*vx+vy*vy||1,t=Math.max(0,Math.min(1,((px-a[0])*vx+(py-a[1])*vy)/den));return Math.hypot(px-(a[0]+t*vx),py-(a[1]+t*vy));}
-function nearestLine(mx,my){let best=null,bd=8;for(const s of state.result?.segments||[]){if(arcMeta(s)){const c=world(s.meta.arcCenter.x,s.meta.arcCenter.y),sp=world(s.meta.arcStartPoint.x,s.meta.arcStartPoint.y),rr=Math.hypot(sp[0]-c[0],sp[1]-c[1]),d=Math.abs(Math.hypot(mx-c[0],my-c[1])-rr);if(d<bd){bd=d;best=s.line;}}else{const d=distToSegment(mx,my,world(s.x,s.y),world(s.x2,s.y2));if(d<bd){bd=d;best=s.line;}}}return best;}
-function run(){parse();if(!state.result.segments.length)return;state.running=true;state.paused=false;state.step=0;state.selectedLine=null;$('#statusText').textContent='Đang mô phỏng';clearInterval(state.timer);state.timer=setInterval(()=>{if(state.paused)return;state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;if(state.selectedLine)updateLines();draw();if(state.step>=state.result.segments.length){clearInterval(state.timer);state.running=false;$('#statusText').textContent='Mô phỏng hoàn tất';}},35);}
-function reset(){clearInterval(state.timer);state.running=false;state.paused=false;state.step=0;state.selectedLine=null;state.selectedPoint=null;$('#statusText').textContent='Sẵn sàng';updateLines();draw();}
-function download(){const a=document.createElement('a'),u=URL.createObjectURL(new Blob([code.value],{type:'text/plain'}));a.href=u;a.download='program.txt';a.click();setTimeout(()=>URL.revokeObjectURL(u),500);}
-code.addEventListener('input',()=>{$('#dirty').textContent='● Chưa lưu';parse();});code.addEventListener('keyup',cursor);code.addEventListener('click',cursor);code.addEventListener('scroll',()=>$('#lineNumbers').scrollTop=code.scrollTop);
-canvas.addEventListener('click',e=>{const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,p=nearestPoint(mx,my);if(p){showPoint(p,e.clientX,e.clientY);return;}const n=nearestLine(mx,my);if(n)selectLine(n);else $('#pointInfo').hidden=true;});
-$('#newBtn').onclick=()=>{code.value='';$('#dirty').textContent='● Chưa lưu';parse();code.focus();};$('#openBtn').onclick=()=>$('#fileInput').click();$('#fileInput').onchange=e=>{const f=e.target.files?.[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{code.value=String(rd.result||'');$('#dirty').textContent='● Đã mở '+f.name;parse();};rd.readAsText(f);e.target.value='';};$('#saveBtn').onclick=download;
-$('#runBtn').onclick=run;$('#pauseBtn').onclick=()=>{if(!state.running)return;state.paused=!state.paused;$('#statusText').textContent=state.paused?'Tạm dừng':'Đang mô phỏng';};$('#stopBtn').onclick=reset;$('#resetBtn').onclick=reset;
-$('#stepBtn').onclick=()=>{if(!state.result)parse();if(state.step>=state.result.segments.length)state.step=0;state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;if(state.selectedLine)updateLines();$('#statusText').textContent='Bước '+state.step;draw();};
-$('#millingBtn').onclick=()=>{state.mode='milling';$('#millingBtn').classList.add('active');$('#turningBtn').classList.remove('active');parse();};$('#turningBtn').onclick=()=>{state.mode='turning';$('#turningBtn').classList.add('active');$('#millingBtn').classList.remove('active');parse();};
-$('#menuFile').onclick=()=>$('#openBtn').click();$('#menuEdit').onclick=()=>code.focus();$('#menuView').onclick=resize;$('#menuSim').onclick=run;$('#menuCheck').onclick=()=>{$('#statusText').textContent=state.result?.errors.length?`Có ${state.result.errors.length} lỗi`:'G-code không có lỗi nghiêm trọng';};$('#menuLearn').onclick=()=>{$('#statusText').textContent='Học CNC';};
-window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('.canvas-wrap'));window.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='s'){e.preventDefault();download();}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();run();}});
-code.value='';updateLines();parse();resize();
+const $=s=>document.querySelector(s), code=$('#code'), canvas=$('#canvas'), ctx=canvas.getContext('2d');
+const state={mode:'milling',result:null,step:0,running:false,paused:false,timer:null,selectedLine:null,selectedPoint:null,view:null};
+const TOOL_COLORS=['#35a9ff','#35d39b','#f3c65b','#f47777','#b78cff','#ff8cbd','#65d6d6','#f59e0b'];
+const dimColor='rgba(205,214,223,.38)', dimText='rgba(218,225,232,.52)', extColor='rgba(177,188,199,.24)';
+function lines(){return code.value.replace(/\r/g,'').split('\n')}
+function fmt(v){return Number(v||0).toFixed(3)}
+function trim(v){return Number(Number(v||0).toFixed(3)).toString()}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function updateLines(){const ls=lines();$('#lineNumbers').innerHTML=ls.map((_,i)=>`<div class="${state.selectedLine===i+1?'active':''}">${i+1}</div>`).join('')}
+function selectLine(n){if(!n)return;const ls=lines();let pos=0;for(let i=1;i<n;i++)pos+=ls[i-1].length+1;const len=ls[n-1]?.length||0;code.focus();code.setSelectionRange(pos,pos+len);state.selectedLine=n;updateLines();const lh=parseFloat(getComputedStyle(code).lineHeight)||20;code.scrollTop=Math.max(0,(n-4)*lh);$('#lineNumbers').scrollTop=code.scrollTop;draw()}
+function parse(){
+ clearInterval(state.timer);state.timer=null;state.running=false;state.paused=false;state.step=0;
+ state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:'FANUC'});state.selectedLine=null;state.selectedPoint=null;hideInfo();updateLines();draw();
+}
+function resize(){const r=canvas.getBoundingClientRect(),d=Math.max(1,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw()}
+function geometryBounds(){
+ const segs=(state.result?.segments||[]).filter(s=>s.g!=='G00');
+ const use=segs.length?segs:state.result?.segments||[];
+ if(!use.length)return null;
+ let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+ for(const s of use){minX=Math.min(minX,s.x,s.x2);maxX=Math.max(maxX,s.x,s.x2);minY=Math.min(minY,s.y,s.y2);maxY=Math.max(maxY,s.y,s.y2)}
+ if(!Number.isFinite(minX))return null;
+ if(Math.abs(maxX-minX)<1e-9){minX-=1;maxX+=1} if(Math.abs(maxY-minY)<1e-9){minY-=1;maxY+=1}
+ return {minX,maxX,minY,maxY};
+}
+function setupView(){
+ const w=canvas.clientWidth,h=canvas.clientHeight,b=geometryBounds(); if(!b){state.view=null;return}
+ const left=Math.min(110,Math.max(55,w*.12)), right=Math.min(55,Math.max(28,w*.06)), top=Math.min(78,Math.max(48,h*.10)), bottom=Math.min(70,Math.max(42,h*.09));
+ const sx=b.maxX-b.minX,sy=b.maxY-b.minY,scale=Math.max(.001,Math.min((w-left-right)/sx,(h-top-bottom)/sy));
+ const ox=left+(w-left-right-sx*scale)/2, oy=top+(h-top-bottom-sy*scale)/2;
+ state.view={b,scale,ox,oy,w,h};
+}
+function world(x,y){const v=state.view;if(!v)return[0,0];return[v.ox+(x-v.b.minX)*v.scale,v.oy+(v.b.maxY-y)*v.scale]}
+function colorForTool(t){const n=Math.max(1,Math.round(Number(t)||1));return TOOL_COLORS[(n-1)%TOOL_COLORS.length]}
+function lineInfo(seg){
+ const st=seg?.meta?.state||{};return {x:seg?.x2??0,y:seg?.y2??0,z:seg?.z??0,tool:st.tool??1,g:seg?.g||'',line:seg?.line||0,feed:st.feed??0,spindle:st.spindle??0};
+}
+function drawArrow(x1,y1,x2,y2){const a=Math.atan2(y2-y1,x2-x1),s=5;ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-s*Math.cos(a-.45),y2-s*Math.sin(a-.45));ctx.moveTo(x2,y2);ctx.lineTo(x2-s*Math.cos(a+.45),y2-s*Math.sin(a+.45));ctx.stroke()}
+function drawDimH(x1,x2,y,refY,label){ctx.save();ctx.strokeStyle=dimColor;ctx.fillStyle=dimText;ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x1,refY);ctx.lineTo(x1,y);ctx.moveTo(x2,refY);ctx.lineTo(x2,y);ctx.stroke();ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.stroke();drawArrow(x1,y,x2,y);drawArrow(x2,y,x1,y);ctx.font='12px Consolas,monospace';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(label,(x1+x2)/2,y-5);ctx.restore()}
+function drawDimV(x,y1,y2,refX,label){ctx.save();ctx.strokeStyle=dimColor;ctx.fillStyle=dimText;ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(refX,y1);ctx.lineTo(x,y1);ctx.moveTo(refX,y2);ctx.lineTo(x,y2);ctx.stroke();ctx.beginPath();ctx.moveTo(x,y1);ctx.lineTo(x,y2);ctx.stroke();drawArrow(x,y1,x,y2);drawArrow(x,y2,x,y1);ctx.font='12px Consolas,monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.translate(x-7,(y1+y2)/2);ctx.rotate(-Math.PI/2);ctx.fillText(label,0,0);ctx.restore()}
+function dimensions(){
+ const v=state.view;if(!v)return;const b=v.b;const p1=world(b.minX,b.maxY),p2=world(b.maxX,b.minY);
+ const top=Math.max(22,p1[1]-32), left=Math.max(28,p1[0]-46), bottom=Math.min(v.h-18,p2[1]+30), right=Math.min(v.w-18,p2[0]+34);
+ drawDimH(p1[0],p2[0],top,p1[1],trim(b.maxX-b.minX));
+ drawDimV(left,p1[1],p2[1],p1[0],trim(b.maxY-b.minY));
+ // A second bottom/right dimension is only shown when it fits outside and is useful for a non-square profile.
+ if(Math.abs((b.maxX-b.minX)-(b.maxY-b.minY))>1e-6 && bottom-p2[1]>12) drawDimH(p1[0],p2[0],bottom,p2[1],trim(b.maxX-b.minX));
+}
+function drawArc(s){
+ const m=s.meta;if(!m?.arcCenter)return false;
+ const c=world(m.arcCenter.x,m.arcCenter.y),sp=world(m.arcStartPoint.x,m.arcStartPoint.y),ep=world(m.arcEndPoint.x,m.arcEndPoint.y);
+ const r=Math.hypot(sp[0]-c[0],sp[1]-c[1]);if(!Number.isFinite(r)||r<.5)return false;
+ const a0=Math.atan2(sp[1]-c[1],sp[0]-c[0]),a1=Math.atan2(ep[1]-c[1],ep[0]-c[0]);
+ // Canvas Y is down, so a machine-clockwise G02 becomes canvas counter-clockwise.
+ const anticlockwise=!!m.cw;
+ const tau=Math.PI*2;let end=a1;
+ if(anticlockwise){while(end>a0)end-=tau}else{while(end<a0)end+=tau}
+ const sweep=Math.abs(m.arcSweep||0);if(sweep>1e-8)end=a0+(anticlockwise?-sweep:sweep);
+ ctx.beginPath();ctx.arc(c[0],c[1],r,a0,end,anticlockwise);ctx.stroke();return true;
+}
+function draw(){
+ const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);state.view=null;
+ const r=state.result;if(!r||!r.segments.length){$('#emptyHint').classList.remove('hidden');return}$('#emptyHint').classList.add('hidden');setupView();
+ const seen=new Set();let i=0;
+ while(i<r.segments.length){
+   const s=r.segments[i], selected=state.selectedLine===s.line, tool=s.meta?.state?.tool??1;
+   ctx.strokeStyle=selected?'#fff':colorForTool(tool);ctx.lineWidth=selected?2.8:1.7;ctx.globalAlpha=s.g==='G00'?.55:1;ctx.setLineDash(s.g==='G00'?[6,5]:[]);
+   if(s.meta?.arc&&s.meta.arcCenter){const line=s.line;let j=i+1;while(j<r.segments.length&&r.segments[j].line===line&&r.segments[j].meta?.arc)j++;drawArc(s);i=j;ctx.globalAlpha=1;continue}
+   const a=world(s.x,s.y),b=world(s.x2,s.y2);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+   if(!seen.has(`${s.x2}|${s.y2}|${s.line}`)){ctx.globalAlpha=1;ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(b[0],b[1],2.1,0,Math.PI*2);ctx.fill();seen.add(`${s.x2}|${s.y2}|${s.line}`)}
+   i++;
+ }
+ ctx.globalAlpha=1;ctx.setLineDash([]);dimensions();
+ if(state.selectedPoint) drawSelectedPoint();
+}
+function drawSelectedPoint(){const p=world(state.selectedPoint.x,state.selectedPoint.y);ctx.save();ctx.fillStyle='#fff';ctx.strokeStyle='#31a8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p[0],p[1],5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()}
+function hideInfo(){$('#pointInfo').classList.add('hidden');state.selectedPoint=null}
+function showInfo(seg,x,y){
+ const inf=lineInfo(seg);state.selectedPoint={x,y};const plane=state.mode==='turning'?'X / Z':'X / Y';
+ $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>X: <b>${fmt(inf.x)}</b></div><div>${state.mode==='turning'?'Z':'Y'}: <b>${fmt(inf.y)}</b></div><div>Z: <b>${fmt(inf.z)}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
+ const wrap=$('.canvas-wrap'),rect=wrap.getBoundingClientRect(),p=world(x,y);let px=p[0]+12,py=p[1]+12;const box=$('#pointInfo');box.classList.remove('hidden');const bw=box.offsetWidth,bh=box.offsetHeight;if(px+bw>rect.width)px=p[0]-bw-12;if(py+bh>rect.height)py=p[1]-bh-12;box.style.left=Math.max(4,px)+'px';box.style.top=Math.max(4,py)+'px';selectLine(inf.line)
+}
+function nearest(mx,my){const r=state.result;if(!r)return null;let best=null,bestD=Infinity,bestPoint=null;
+ for(const s of r.segments){const a=world(s.x,s.y),b=world(s.x2,s.y2);const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;let t=l2?((mx-a[0])*dx+(my-a[1])*dy)/l2:0;t=Math.max(0,Math.min(1,t));const px=a[0]+dx*t,py=a[1]+dy*t,d=Math.hypot(mx-px,my-py);if(d<bestD){bestD=d;best=s;bestPoint={x:s.x+(s.x2-s.x)*t,y:s.y+(s.y2-s.y)*t}}}
+ return best?{seg:best,d:bestD,point:bestPoint}:null;
+}
+function clickCanvas(e){const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;const hit=nearest(mx,my);if(!hit){hideInfo();draw();return}const {seg,d,point}=hit;if(d<=9){showInfo(seg,point.x,point.y)}else{hideInfo();selectLine(seg.line)}}
+function run(){parse();if(!state.result.segments.length)return;state.running=true;state.step=0;state.selectedLine=null;state.paused=false;clearInterval(state.timer);state.timer=setInterval(()=>{if(state.paused)return;state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;updateLines();draw();if(state.step>=state.result.segments.length){clearInterval(state.timer);state.timer=null;state.running=false}},35)}
+function reset(){clearInterval(state.timer);state.timer=null;state.running=false;state.paused=false;state.step=0;state.selectedLine=null;hideInfo();draw()}
+function newFile(){clearInterval(state.timer);code.value='';state.step=0;state.selectedLine=null;hideInfo();updateLines();draw();code.focus()}
+function download(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([code.value],{type:'text/plain'}));a.download='program.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+code.addEventListener('input',()=>{state.selectedLine=null;hideInfo();updateLines();parse()});code.addEventListener('scroll',()=>$('#lineNumbers').scrollTop=code.scrollTop);
+$('#newBtn').onclick=newFile;$('#openBtn').onclick=()=>$('#fileInput').click();$('#saveBtn').onclick=download;$('#runBtn').onclick=run;$('#pauseBtn').onclick=()=>{state.paused=!state.paused};$('#stopBtn').onclick=reset;$('#resetBtn').onclick=reset;$('#stepBtn').onclick=()=>{if(!state.result)parse();if(state.step<state.result.segments.length)state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;updateLines();draw()};$('#millingBtn').onclick=()=>{state.mode='milling';$('#millingBtn').classList.add('active');$('#turningBtn').classList.remove('active');parse()};$('#turningBtn').onclick=()=>{state.mode='turning';$('#turningBtn').classList.add('active');$('#millingBtn').classList.remove('active');parse()};$('#fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{code.value=rd.result||'';updateLines();parse();};rd.readAsText(f);e.target.value=''};
+canvas.addEventListener('click',clickCanvas);canvas.addEventListener('mouseleave',()=>{});window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('.canvas-wrap'));window.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='s'){e.preventDefault();download()}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();run()}});
+updateLines();parse();resize();
 })();
