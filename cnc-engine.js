@@ -156,9 +156,10 @@ function parse(text,options={}){
    }
  }
  for(let i=0;i<lines.length;i++){
-   const raw=lines[i], clean=expandCR(stripComments(raw)); if(!clean||clean==='%')continue;
-   const ws=tokenize(raw); if(!ws.length)continue; const line=i+1;
-   if(/\bCR\s*(?!\=)\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)/i.test(clean)){diag(line,'error','Cú pháp CR phải dùng dấu =, ví dụ CR=20.','CR=');continue;}
+   const raw=lines[i], baseClean=stripComments(raw); if(!baseClean||baseClean==='%')continue; const line=i+1;
+   if(/\bCR\s*(?![=])/i.test(baseClean) && /\bCR\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)/i.test(baseClean)){diag(line,'error','CR phải dùng đúng cú pháp CR=giá trị.','CR');continue;}
+   const clean=expandCR(baseClean);
+   const ws=tokenize(clean); if(!ws.length)continue;
    const ns=word(ws,'N'); if(ns!==null)result.events.push({line,type:'sequence',value:ns});
    if(clean.startsWith('/')||s.skip){result.events.push({line,type:'block-skip'});continue}
    // Macro assignment: #100=10, #<DEPTH>=#100-2
