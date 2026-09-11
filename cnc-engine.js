@@ -38,7 +38,7 @@ function stripComments(line){
  line=line.replace(/\/\s*(?=(?:N\s*)?\d|G|M|T|X|Y|Z|A|B|C|U|V|W|F|S|I|J|K|R|P|Q|L|H|D)/gi,' ');
  return line.trim().toUpperCase();
 }
-function expandCR(line){return line.replace(/\bCR\s*=\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)/gi,'R$1')}
+function expandCR(line){return line.replace(/\bCR\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)/gi,'R$1')}
 function tokenize(line){
  const s=expandCR(stripComments(line)); const out=[];
  const re=/([A-Z])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)/g; let m;
@@ -156,12 +156,8 @@ function parse(text,options={}){
    }
  }
  for(let i=0;i<lines.length;i++){
-   const raw=lines[i], stripped=stripComments(raw); if(!stripped||stripped==='%')continue;
-   const line=i+1;
-   const malformedCR=/\bCR\s*(?!\=)/i.test(stripped);
-   if(malformedCR){diag(line,'error','Cú pháp CR phải có dấu =, ví dụ CR=20. CR20 và CR-20 không hợp lệ.','CR=');continue;}
-   const clean=expandCR(stripped);
-   const ws=tokenize(clean); if(!ws.length)continue;
+   const raw=lines[i], clean=expandCR(stripComments(raw)); if(!clean||clean==='%')continue;
+   const ws=tokenize(raw); if(!ws.length)continue; const line=i+1;
    const ns=word(ws,'N'); if(ns!==null)result.events.push({line,type:'sequence',value:ns});
    if(clean.startsWith('/')||s.skip){result.events.push({line,type:'block-skip'});continue}
    // Macro assignment: #100=10, #<DEPTH>=#100-2
