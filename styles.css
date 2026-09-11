@@ -1,399 +1,243 @@
-* {
-    box-sizing: border-box;
-}
+const codeArea = document.getElementById("codeArea");
+const canvas = document.getElementById("cncCanvas");
 
-html,
-body {
-    margin: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    font-family: Arial, Helvetica, sans-serif;
-    background: #070c11;
-    color: #d7e0e8;
-}
+const coordX = document.getElementById("coordX");
+const coordY = document.getElementById("coordY");
 
-body {
-    display: flex;
-    flex-direction: column;
-}
+const ctx = canvas.getContext("2d");
 
-/* =========================
-   TOP BAR
-========================= */
+let program = [];
 
-.topbar {
-    height: 52px;
-    min-height: 52px;
-
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    padding: 0 18px;
-
-    background: #091018;
-    border-bottom: 1px solid #202c38;
-}
-
-.brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.brand-icon {
-    width: 30px;
-    height: 30px;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    border-radius: 8px;
-
-    background: #20b8a5;
-    color: #071014;
-
-    font-size: 18px;
-    font-weight: 800;
-}
-
-.brand-name {
-    font-size: 14px;
-    font-weight: 700;
-    line-height: 15px;
-}
-
-.brand-sub {
-    margin-top: 2px;
-
-    color: #7e8d9b;
-    font-size: 10px;
-}
-
-.connection {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-
-    color: #8997a5;
-    font-size: 11px;
-}
-
-.status-dot {
-    width: 7px;
-    height: 7px;
-
-    border-radius: 50%;
-    background: #20d69a;
-}
-
-/* =========================
-   MENU
-========================= */
-
-.menu {
-    height: 52px;
-    min-height: 52px;
-
-    display: flex;
-    align-items: center;
-
-    padding: 0 28px;
-
-    gap: 28px;
-
-    background: #0a1118;
-    border-bottom: 1px solid #1d2934;
-
-    font-size: 13px;
-}
-
-.menu > div:not(.controller) {
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.menu > div:not(.controller):hover {
-    color: #fff;
-}
-
-.controller {
-    margin-left: auto;
-
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    color: #82909e;
-}
-
-.controller select {
-    height: 30px;
-
-    padding: 0 28px 0 10px;
-
-    border: 1px solid #283746;
-    border-radius: 6px;
-
-    background: #101a24;
-    color: #9eabb7;
-
-    outline: none;
-}
-
-.controller button {
-    height: 24px;
-
-    padding: 0 8px;
-
-    border: 1px solid #27536f;
-    border-radius: 10px;
-
-    background: #0b1823;
-    color: #56a9d8;
-
-    font-size: 9px;
-    font-weight: 700;
-}
-
-/* =========================
-   WORKSPACE
-========================= */
-
-.workspace {
-    flex: 1;
-
-    display: grid;
-    grid-template-columns: 370px minmax(0, 1fr);
-
-    gap: 10px;
-
-    padding: 7px 10px 10px;
-
-    min-height: 0;
-}
 
 /* =========================
    CODE
 ========================= */
 
-.code-panel,
-.graph-panel {
-    min-width: 0;
-    min-height: 0;
+function setProgram(gcode) {
 
-    border: 1px solid #273442;
-    border-radius: 7px;
+    program = gcode
+        .split(/\r?\n/)
+        .filter(line => line.trim() !== "");
 
-    background: #080e14;
-
-    overflow: hidden;
+    renderCode();
 }
 
-.code-panel {
-    display: flex;
-    flex-direction: column;
+
+function renderCode() {
+
+    codeArea.innerHTML = "";
+
+    program.forEach((line, index) => {
+
+        const row = document.createElement("div");
+        row.className = "code-line";
+
+        row.dataset.line = index;
+
+        const number = document.createElement("div");
+        number.className = "line-number";
+        number.textContent = index + 1;
+
+        const code = document.createElement("div");
+        code.className = "line-code";
+        code.textContent = line;
+
+        row.appendChild(number);
+        row.appendChild(code);
+
+        codeArea.appendChild(row);
+    });
 }
 
-.panel-tab {
-    height: 48px;
-    min-height: 48px;
-
-    display: flex;
-    align-items: flex-end;
-
-    background: #0d151e;
-
-    border-bottom: 1px solid #25313d;
-}
-
-.panel-tab span {
-    height: 47px;
-
-    display: flex;
-    align-items: center;
-
-    padding: 0 17px;
-
-    border-right: 1px solid #273442;
-    border-top: 3px solid #2099e5;
-
-    color: #d8e0e8;
-
-    font-size: 14px;
-}
-
-.code-area {
-    flex: 1;
-
-    overflow: auto;
-
-    padding: 16px 0;
-
-    background: #080e14;
-
-    font-family: Consolas, "Courier New", monospace;
-    font-size: 13px;
-}
-
-.code-line {
-    display: flex;
-
-    min-height: 28px;
-
-    padding-right: 15px;
-}
-
-.line-number {
-    width: 48px;
-    min-width: 48px;
-
-    text-align: right;
-
-    padding-right: 14px;
-
-    color: #586776;
-    user-select: none;
-}
-
-.line-code {
-    white-space: pre;
-    color: #d8e1e9;
-}
-
-.code-line.active {
-    background: #102536;
-}
-
-.code-line.active .line-number {
-    color: #55b9ed;
-}
-
-.code-line.active .line-code {
-    color: #fff;
-}
 
 /* =========================
-   2D PANEL
+   CLICK 2D / CODE LINK
 ========================= */
 
-.graph-panel {
-    display: flex;
-    flex-direction: column;
+function highlightLine(lineNumber) {
+
+    document.querySelectorAll(".code-line")
+        .forEach(el => el.classList.remove("active"));
+
+    const row = document.querySelector(
+        `.code-line[data-line="${lineNumber}"]`
+    );
+
+    if (!row) return;
+
+    row.classList.add("active");
+
+    row.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+    });
 }
 
-.graph-header {
-    height: 48px;
-    min-height: 48px;
-
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    padding: 0 14px;
-
-    background: #0d151e;
-    border-bottom: 1px solid #25313d;
-}
-
-.graph-title {
-    font-size: 18px;
-    font-weight: 700;
-
-    color: #e0e7ed;
-}
-
-.coordinates {
-    display: flex;
-    gap: 20px;
-
-    color: #4da7df;
-
-    font-family: Consolas, monospace;
-    font-size: 11px;
-}
-
-.coordinates b {
-    color: #8798a8;
-    font-weight: 400;
-}
-
-.drawing-area {
-    position: relative;
-
-    flex: 1;
-
-    min-height: 0;
-
-    overflow: hidden;
-
-    background: #070d13;
-}
-
-#cncCanvas {
-    width: 100%;
-    height: 100%;
-
-    display: block;
-}
 
 /* =========================
-   MOBILE
+   CANVAS
 ========================= */
 
-@media (max-width: 800px) {
+function resizeCanvas() {
 
-    .topbar {
-        padding: 0 12px;
-    }
+    const rect = canvas.getBoundingClientRect();
 
-    .connection {
-        display: none;
-    }
+    const dpr = window.devicePixelRatio || 1;
 
-    .menu {
-        padding: 0 18px;
-        gap: 20px;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
 
-        overflow-x: auto;
-        white-space: nowrap;
-    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    .controller {
-        display: none;
-    }
-
-    .workspace {
-        grid-template-columns: minmax(230px, 38%) minmax(0, 1fr);
-        gap: 5px;
-
-        padding: 5px;
-    }
-
-    .panel-tab {
-        height: 42px;
-        min-height: 42px;
-    }
-
-    .panel-tab span {
-        height: 41px;
-        padding: 0 12px;
-    }
-
-    .graph-header {
-        height: 42px;
-        min-height: 42px;
-        padding: 0 10px;
-    }
-
-    .graph-title {
-        font-size: 16px;
-    }
-
-    .coordinates {
-        gap: 8px;
-        font-size: 10px;
-    }
+    draw();
 }
+
+
+function clearCanvas() {
+
+    const rect = canvas.getBoundingClientRect();
+
+    ctx.clearRect(
+        0,
+        0,
+        rect.width,
+        rect.height
+    );
+}
+
+
+/*
+    Hiện tại canvas cố tình để trống.
+
+    Engine CNC của bạn sẽ gọi drawToolpath()
+    sau khi đọc G-code.
+*/
+
+function draw() {
+
+    clearCanvas();
+
+    /*
+       KHÔNG vẽ sẵn:
+
+       - hình mẫu
+       - kích thước
+       - đường tâm
+       - trục
+       - G-code
+       - DIM
+
+       Những thứ này sẽ do CNC engine
+       sinh ra từ chương trình thực tế.
+    */
+}
+
+
+/* =========================
+   TOOLPATH API
+========================= */
+
+function drawToolpath(points) {
+
+    if (!points || points.length < 2)
+        return;
+
+    clearCanvas();
+
+    const rect = canvas.getBoundingClientRect();
+
+    const padding = 40;
+
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const width = Math.max(maxX - minX, 1);
+    const height = Math.max(maxY - minY, 1);
+
+    const scale = Math.min(
+        (rect.width - padding * 2) / width,
+        (rect.height - padding * 2) / height
+    );
+
+    function sx(x) {
+        return padding + (x - minX) * scale;
+    }
+
+    function sy(y) {
+        return rect.height - padding - (y - minY) * scale;
+    }
+
+    ctx.beginPath();
+
+    points.forEach((p, i) => {
+
+        const x = sx(p.x);
+        const y = sy(p.y);
+
+        if (i === 0)
+            ctx.moveTo(x, y);
+        else
+            ctx.lineTo(x, y);
+    });
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#25a9f0";
+    ctx.stroke();
+}
+
+
+/* =========================
+   COORDINATES
+========================= */
+
+function updateCoordinates(x, y) {
+
+    coordX.textContent = Number(x).toFixed(3);
+    coordY.textContent = Number(y).toFixed(3);
+}
+
+
+/* =========================
+   CLICK CANVAS
+========================= */
+
+canvas.addEventListener("click", event => {
+
+    /*
+       Sau này CNC engine sẽ xác định
+       đoạn G-code tương ứng với vị trí click.
+
+       highlightLine(lineNumber);
+    */
+});
+
+
+/* =========================
+   INIT
+========================= */
+
+window.addEventListener("resize", resizeCanvas);
+
+resizeCanvas();
+
+
+/*
+   Không nạp code/hình mẫu ở đây.
+   Khi engine CNC đọc file:
+
+   setProgram(gcode);
+
+   Sau khi parser chạy:
+
+   drawToolpath(points);
+
+   Khi click vào đường chạy dao:
+
+   highlightLine(lineNumber);
+*/
