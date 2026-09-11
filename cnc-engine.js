@@ -132,8 +132,9 @@ function parse(text,options={}){
    const pa=transform(a),pb=transform(b); const qa=project(pa,s.plane),qb=project(pb,s.plane);
    let c=arcCenterIJK(pa,pb,ws,s.plane,s.arcDistance,pa); const rv=readAxis(ws,'R');
    if(!c&&rv!==null)c=arcCenterR(qa,qb,rv,cw);
-   if(!c){diag(line,'warning','Không xác định được tâm cung; hiển thị thành đoạn thẳng.',g);addSegment(result.segments,qa,qb,g,line,{...meta,arcFallback:true});return}
-   arc(result.segments,qa,qb,c,cw,g,line,meta)
+   const segState={plane:s.plane,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool};
+   if(!c){diag(line,'warning','Không xác định được tâm cung; hiển thị thành đoạn thẳng.',g);addSegment(result.segments,qa,qb,g,line,{...meta,arcFallback:true,state:segState});return}
+   arc(result.segments,qa,qb,c,cw,g,line,{...meta,state:segState})
  }
  function drillCycle(code,ws,line,baseTarget){
    const r=readAxis(ws,'R')??cycle.R??(s.z+2); const depth=readAxis(ws,'Z')??cycle.Z??s.z; const q=Math.abs(readAxis(ws,'Q')??cycle.Q??Math.max(.5,Math.abs(depth-r)/4));
