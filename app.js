@@ -25,6 +25,12 @@ function canvasResult(result){
   return {...s,x:s.y,y:s.x,x2:s.y2,y2:s.x2,meta};
  })};
 }
+function mirrorLatheSegment(s){
+ const meta={...s.meta,mirrored:true};
+ if(meta.arcCenter){meta.arcCenter={x:meta.arcCenter.x,y:-meta.arcCenter.y};meta.arcStart=-meta.arcStart;meta.arcSweep=-meta.arcSweep;
+  for(const key of ['arcStartPoint','arcEndPoint'])if(meta[key])meta[key]={x:meta[key].x,y:-meta[key].y};}
+ return {...s,y:-s.y,y2:-s.y2,meta};
+}
 function planeAxes(plane){return plane==='G18'?(state.mode==='turning'?['Z','X']:['X','Z']):plane==='G19'?['Y','Z']:['X','Y']}
 function resize(){const r=canvas.getBoundingClientRect(),d=Math.max(1,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw()}
 function geometryBounds(){
@@ -85,7 +91,7 @@ function drawArc(s){
  if(!m?.arcCenter)return false;
  const line=s.line, r=state.displaySegments;
  const parts=[];
- for(const q of r){if(q.line===line&&q.meta?.arc&&q.meta.arcCenter)parts.push(q)}
+ for(const q of r){if(q.line===line&&!!q.meta?.mirrored===!!s.meta?.mirrored&&q.meta?.arc&&q.meta.arcCenter)parts.push(q)}
  if(!parts.length)return false;
  ctx.beginPath();
  let first=true;
@@ -99,18 +105,18 @@ function drawArc(s){
 }
 function draw(){
  const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);state.view=null;
- const all=state.result?.segments||[];state.displaySegments=all;const r={segments:state.displaySegments};updateStatus();setupView();drawCoordinateScale();
+ const all=state.result?.segments||[];state.displaySegments=state.mode==='turning'?[...all,...all.filter(s=>s.meta?.state?.plane==='G18').map(mirrorLatheSegment)]:all;const r={segments:state.displaySegments};updateStatus();setupView();drawCoordinateScale();
  const seen=new Set();let i=0;
  while(i<r.segments.length){
    const s=r.segments[i], selected=state.selectedLine===s.line, tool=s.meta?.state?.tool??1;
    ctx.strokeStyle=selected?'#fff':colorForTool(tool);ctx.lineWidth=selected?2.8:1.7;ctx.globalAlpha=s.g==='G00'?.55:1;ctx.setLineDash(s.g==='G00'?[6,5]:[]);
-   if(s.meta?.arc&&s.meta.arcCenter){const line=s.line;let j=i+1;while(j<r.segments.length&&r.segments[j].line===line&&r.segments[j].meta?.arc)j++;drawArc(s);ctx.globalAlpha=1;const end=r.segments[j-1];const ep=world(end.x2,end.y2);ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(ep[0],ep[1],2.1,0,Math.PI*2);ctx.fill();i=j;continue}
+   if(s.meta?.arc&&s.meta.arcCenter){const line=s.line;let j=i+1;while(j<r.segments.length&&r.segments[j].line===line&&!!r.segments[j].meta?.mirrored===!!s.meta?.mirrored&&r.segments[j].meta?.arc)j++;drawArc(s);ctx.globalAlpha=1;const end=r.segments[j-1];const ep=world(end.x2,end.y2);ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(ep[0],ep[1],2.1,0,Math.PI*2);ctx.fill();i=j;continue}
    const a=world(s.x,s.y),b=world(s.x2,s.y2);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
-   if(!seen.has(`${s.x2}|${s.y2}|${s.line}`)){ctx.globalAlpha=1;ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(b[0],b[1],2.1,0,Math.PI*2);ctx.fill();seen.add(`${s.x2}|${s.y2}|${s.line}`)}
+   if(!seen.has(`${s.x2}|${s.y2}|${s.line}|${!!s.meta?.mirrored}`)){ctx.globalAlpha=1;ctx.fillStyle=selected?'#fff':colorForTool(tool);ctx.beginPath();ctx.arc(b[0],b[1],2.1,0,Math.PI*2);ctx.fill();seen.add(`${s.x2}|${s.y2}|${s.line}|${!!s.meta?.mirrored}`)}
    i++;
  }
  ctx.globalAlpha=1;ctx.setLineDash([]);
- if($('#dims').checked){dimensions();const active=state.displaySegments.filter(s=>s.line===state.selectedLine).at(-1);if(active?.meta?.arcCenter){const c=active.meta.arcCenter,a=world(c.x,c.y),b=world(active.x2,active.y2);ctx.strokeStyle='#f1c85b';ctx.fillStyle='#f1c85b';ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();ctx.font='12px monospace';ctx.fillText('R '+trim(active.meta.arcRadius),(a[0]+b[0])/2+6,(a[1]+b[1])/2-6)}}
+ if($('#dims').checked){dimensions();const active=state.displaySegments.filter(s=>s.line===state.selectedLine&&!s.meta?.mirrored).at(-1);if(active?.meta?.arcCenter){const c=active.meta.arcCenter,a=world(c.x,c.y),b=world(active.x2,active.y2);ctx.strokeStyle='#f1c85b';ctx.fillStyle='#f1c85b';ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();ctx.font='12px monospace';ctx.fillText('R '+trim(active.meta.arcRadius),(a[0]+b[0])/2+6,(a[1]+b[1])/2-6)}}
  if(state.selectedPoint) drawSelectedPoint();
 }
 function drawCoordinateScale(){
@@ -130,7 +136,7 @@ function drawSelectedPoint(){const p=world(state.selectedPoint.x,state.selectedP
 function hideInfo(){$('#pointInfo').classList.add('hidden');state.selectedPoint=null}
 function showInfo(seg,x,y){
  const inf=lineInfo(seg);state.selectedPoint={x,y};const plane=seg.meta?.state?.plane||'G17';
- $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>${planeAxes(plane)[0]}: <b>${fmt(inf.x)}</b></div><div>${planeAxes(plane)[1]}: <b>${fmt(inf.y)}${state.mode==='turning'&&plane==='G18'?' · code X'+fmt(inf.y*(seg.meta.state.diameterMode?2:1)):''}</b></div><div>Plan: <b>${escapeHtml(seg.meta?.state?.plane||'G17')}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
+ $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>${planeAxes(plane)[0]}: <b>${fmt(inf.x)}</b></div><div>${planeAxes(plane)[1]}: <b>${fmt(inf.y)}${state.mode==='turning'&&plane==='G18'?' · code X'+fmt(inf.y*(seg.meta.mirrored?-1:1)*(seg.meta.state.diameterMode?2:1)):''}</b></div><div>Plan: <b>${escapeHtml(seg.meta?.state?.plane||'G17')}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
  const wrap=$('.canvas-wrap'),rect=wrap.getBoundingClientRect(),p=world(x,y);let px=p[0]+12,py=p[1]+12;const box=$('#pointInfo');box.classList.remove('hidden');const bw=box.offsetWidth,bh=box.offsetHeight;if(px+bw>rect.width)px=p[0]-bw-12;if(py+bh>rect.height)py=p[1]-bh-12;box.style.left=Math.max(4,px)+'px';box.style.top=Math.max(4,py)+'px';selectLine(inf.line)
 }
 function nearest(mx,my){const r={segments:state.displaySegments};if(!state.view)return null;let best=null,bestD=Infinity,bestPoint=null;
@@ -150,10 +156,10 @@ function cursorLine(){return code.value.slice(0,code.selectionStart).split('\n')
 function followCursor(){state.selectedLine=cursorLine();hideInfo();updateLines();draw()}
 function updateStatus(){
  const line=state.selectedLine||cursorLine(),segs=state.result?.segments||[],current=segs.filter(s=>s.line===line),last=current.at(-1),plane=last?.meta?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=planeAxes(plane);
- $('#cursorInfo').textContent=`Dòng ${line} / ${lines().length}`;$('#planeTitle').textContent=`Canvas ${axes.join(' / ')}${state.mode==='turning'?' · X/2 bán kính':''}`;$('#hint').textContent=state.mode==='turning'?'Tiện: Z ngang, X dọc. X40 trong code → bán kính 20 trên hình (X/2, G7); G8 dùng X bán kính. CR= là bán kính cung, không chia đôi. Tròn kín dùng I/K theo bán kính.':'G02 / G03: CR= là bán kính cung; CR âm chọn cung lớn. Tròn kín dùng I/J.';document.querySelector('[data-insert="G02 I10 J0"]').textContent=state.mode==='turning'?'Tròn I/K':'Tròn I/J';
+ $('#cursorInfo').textContent=`Dòng ${line} / ${lines().length}`;$('#planeTitle').textContent=`Canvas ${axes.join(' / ')}${state.mode==='turning'?' · Đối xứng ±X/2':''}`;$('#hint').textContent=state.mode==='turning'?'Tiện: Z ngang, X dọc. X40 là Ø40: vẽ hai phía +20 / −20 qua tâm Z (G7); G8 dùng X bán kính. CR= là bán kính cung, không chia đôi. Tròn kín dùng I/K theo bán kính.':'G02 / G03: CR= là bán kính cung; CR âm chọn cung lớn. Tròn kín dùng I/J.';document.querySelector('[data-insert="G02 I10 J0"]').textContent=state.mode==='turning'?'Tròn I/K':'Tròn I/J';
  $('#selectionTitle').textContent=`Dòng ${line} · ${last?.g||'Soạn thảo'}`;
  const length=current.reduce((n,s)=>n+Math.hypot(s.x2-s.x,s.y2-s.y),0),radius=last?.meta?.arcRadius;
- $('#segmentInfo').textContent=last?`${axes[0]} ${fmt(last.x2)} · ${axes[1]} ${fmt(last.y2)}${state.mode==='turning'&&plane==='G18'?' (code X'+fmt(last.y2*(last.meta.state.diameterMode?2:1))+', '+(last.meta.state.diameterMode?'X/2':'bán kính')+')':''} | Chiều dài ${fmt(length)} mm${radius?' | R '+fmt(Math.abs(radius)):''}`:'Dòng này chưa có đường chạy dao.';
+ $('#segmentInfo').textContent=last?`${axes[0]} ${fmt(last.x2)} · ${axes[1]} ${fmt(last.y2)}${state.mode==='turning'&&plane==='G18'?' (code X'+fmt(last.y2*(last.meta.state.diameterMode?2:1))+', hai phía '+fmt(Math.abs(last.y2))+' / '+fmt(-Math.abs(last.y2))+')':''} | Chiều dài ${fmt(length)} mm${radius?' | R '+fmt(Math.abs(radius)):''}`:'Dòng này chưa có đường chạy dao.';
  const ds=state.result?.diagnostics||[];$('#diagnostics').replaceChildren(...ds.slice(0,30).map(d=>{const b=document.createElement('button');b.className='diagnostic '+d.severity;b.textContent=`Dòng ${d.line}: ${d.message}`;b.onclick=()=>selectLine(d.line);return b}));
  $('#status').textContent=`${state.mode==='turning'?'TIỆN':'PHAY'} · ${$('#controller').value} · ${segs.length} đoạn · ${state.running?(state.paused?'Tạm dừng':'Đang chạy'):'Sẵn sàng'} · ${ds.length} thông báo`;
  try{localStorage.setItem('cnc-note',JSON.stringify({code:code.value,mode:state.mode,controller:$('#controller').value}))}catch{}
