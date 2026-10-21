@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "Soạn G-code và mô phỏng hình học phay, tiện ngoại tuyến",
   "private": true,
-  "main": "desktop/main.cjs",
+  "main": "build/windows-main.cjs",
   "author": "ENY333",
   "scripts": {
     "desktop": "electron .",
     "test": "node tests/turning-diameter.js && node tests/lathe-display.js && node tests/desktop-main.js",
-    "build:win": "electron-builder --win portable --x64"
+    "build:win": "electron-builder --win portable --x64 && node build/copy-windows.cjs"
   },
   "devDependencies": {
     "electron": "45.0.0",
@@ -22,7 +22,7 @@
       "output": "dist"
     },
     "files": [
-      "desktop/main.cjs",
+      "build/windows-main.cjs",
       "index.html",
       "app.js",
       "cnc-engine.js",

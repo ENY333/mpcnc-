@@ -1,17 +1,28 @@
-# CNC Note
+# CNC Note — Web & Windows
 
-Soạn G-code và xem hình học phay/tiện trên canvas. [Mở bản web](https://eny333.github.io/mpcnc-/).
+Soạn G-code và mô phỏng hình học phay/tiện trên canvas.
 
-## Ứng dụng Windows
+| Thư mục | Nội dung |
+| --- | --- |
+| [`web/`](web/) | Mã nguồn ứng dụng web, kiểm tra và công cụ đóng gói Windows |
+| [`desktop/`](desktop/) | Chỉ file `.exe` chạy trên Windows 64-bit |
 
-Bản portable cho Windows 10/11 **64-bit**: `CNC-Note-1.0.0-Windows-x64.exe`.
-Mở file để chạy, không cần cài Node.js hoặc kết nối Internet. Dùng **Mở** để nhập G-code,
-**Tải** để xuất `program.txt`. Bản nháp được lưu riêng trong dữ liệu ứng dụng trên máy,
-không tự chuyển từ bản nháp trên trình duyệt; hãy xuất file từ bản web rồi mở trong ứng dụng.
+## Tải về máy tính
 
-Tải bản build trong [GitHub Actions](https://github.com/ENY333/mpcnc-/actions/workflows/windows-app.yml):
-chọn lần chạy **Build Windows app** thành công mới nhất, tải artifact **CNC-Note-Windows-x64**,
-giải nén ZIP và mở file `.exe`. Các bản build chưa ký số.
+**[Tải CNC Note cho Windows (.exe, khoảng 96 MB)](https://github.com/ENY333/mpcnc-/raw/refs/heads/main/desktop/CNC-Note-1.0.0-Windows-x64.exe)**
+
+Dùng Windows 10/11 **64-bit**. Tải xong mở file để chạy trực tiếp, không cần cài đặt,
+không cần Node.js, trình duyệt hoặc Internet. Bản build chưa ký số.
+
+Dùng **Mở** để nhập G-code, **Tải** để xuất `program.txt`. Bản nháp lưu riêng trong
+ứng dụng trên máy. Để chuyển bản nháp từ web, tải file từ web rồi mở trong ứng dụng.
+
+## Bản web
+
+**[Mở CNC Note trên web](https://eny333.github.io/mpcnc-/web/)**
+
+Địa chỉ cũ `https://eny333.github.io/mpcnc-/` tự chuyển đến `web/`.
+Bản nháp trên cùng trình duyệt và cùng website vẫn dùng chung.
 
 ## Quy ước tiện
 
@@ -21,23 +32,29 @@ X40 trong code là Ø40, hình hiển thị đối xứng +20 / −20 qua đư�
 Hình đối xứng không nhân đôi chiều dài và bước chạy chương trình.
 Các chu kỳ nâng cao có giới hạn; xem thông báo trong ứng dụng.
 
-## Phát triển và đóng gói
+## Phát triển
 
-Yêu cầu Node.js 24 và npm. Trên Windows:
+Bản web không cần cài thư viện:
 
 ```sh
+cd web
+python3 -m http.server 8000
+```
+
+Đóng gói Windows với Node.js 24 và npm:
+
+```sh
+cd web
 npm ci
 npm test
 npm run desktop
 npm run build:win
 ```
 
-File `.exe` nằm trong `dist/`. Workflow Windows chạy cùng các lệnh kiểm tra và đóng gói
-khi có thay đổi trên `main`, khi tạo tag phiên bản hoặc chạy thủ công.
-Không commit `node_modules/` và `dist/`.
+Quá trình build tạo dữ liệu tạm trong `web/dist/`, rồi sao chép file `.exe` hoàn chỉnh
+vào `desktop/`. Không commit `node_modules/` hoặc `dist/`.
 
-Bản web không cần cài thư viện:
-
-```sh
-python3 -m http.server 8000
-```
+[GitHub Actions](https://github.com/ENY333/mpcnc-/actions/workflows/windows-app.yml)
+cũng tạo bản Windows khi thay đổi `web/`, tạo tag phiên bản hoặc chạy thủ công.
+Bản build được lưu trong artifact **CNC-Note-Windows-x64**; file trong `desktop/`
+là bản phát hành được đưa lên kho, không tự thay đổi khi workflow tạo artifact mới.

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CNC Studio</title>
+<link rel="stylesheet" href="styles.css?v=20261021.5">
+</head>
+<body>
+<div class="app">
+
+  <header class="brand"><strong>CNC NOTE</strong><span>Sổ tay lập trình • Phay & Tiện</span><label>Bộ điều khiển <select id="controller"><option>FANUC</option><option>HAAS</option><option>LINUXCNC</option></select></label></header><section class="toolbar">
+    <button id="newBtn">＋ Mới</button>
+    <button id="openBtn">📂 Mở</button>
+    <button id="saveBtn">💾 Tải</button>
+    <span class="sep"></span>
+    <button id="runBtn" class="primary">▶ Chạy</button>
+    <button id="pauseBtn">Ⅱ Dừng</button>
+    <button id="stopBtn" class="danger">■ Stop</button>
+    <button id="stepBtn">⏭ Bước</button>
+    <button id="resetBtn">↻ Reset</button>
+    <span class="sep"></span>
+    <button id="millingBtn" class="mode active">PHAY</button>
+    <button id="turningBtn" class="mode">TIỆN</button>
+    <input id="fileInput" type="file" accept=".nc,.cnc,.gcode,.txt" hidden>
+  </section>
+
+  <main class="workspace">
+    <section class="editor-panel">
+      <div class="panel-head"><span class="tab active">program.nc</span><span id="cursorInfo"></span></div>
+      <div class="editor-wrap">
+        <div id="lineNumbers" class="line-numbers"></div>
+        <textarea id="code" spellcheck="false" wrap="off" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+      </div>
+    </section>
+
+    <section class="view-panel">
+      <div class="view-head"><strong id="planeTitle">Canvas X / Y</strong><span class="selection-note">Chọn dòng để tô sáng đường chạy</span><label><input id="dims" type="checkbox" checked> Kích thước</label><button id="fitBtn">Vừa khung</button></div>
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+        <div id="pointInfo" class="point-info hidden"></div>
+      </div>
+    </section>
+  </main>
+<section class="support">
+<div><h3>Trợ lý G-code</h3><div class="insert-tools"><button data-insert="G00 X0 Y0 Z5">Chạy nhanh</button><button data-insert="G01 X20 Y20 F300">Đường thẳng</button><button data-insert="G02 X20 Y0 CR=10">Cung ↻ CR=</button><button data-insert="G03 X0 Y0 CR=10">Cung ↺ CR=</button><button data-insert="G02 I10 J0">Tròn I/J</button><button id="insertCircle">Chèn đường tròn theo R</button></div><p id="hint">G02 / G03: dùng CR=R; CR âm chọn cung lớn. Tròn kín dùng I/J/K.</p><button id="sampleBtn">Nạp mẫu theo chế độ</button></div>
+<div><h3>Tính toán bán kính / đường tròn</h3><div class="calc-fields"><label>Bán kính R (mm)<input id="radius" type="number" min="0.001" step="any" value="10"></label><label>Dây cung (mm)<input id="chord" type="number" min="0" step="any" value="10"></label><label>Góc (°)<input id="angle" type="number" step="any" value="90"></label></div><output id="calcResult" aria-live="polite"></output><button id="insertRadius">Chèn CR= tại con trỏ</button></div>
+<div><h3 id="selectionTitle">Dòng đang viết</h3><div id="segmentInfo"></div><div id="diagnostics" aria-live="polite"></div><small>Mô phỏng hình học; các chu kỳ nâng cao được ghi chú theo khả năng bộ đọc.</small></div>
+</section><footer id="status" role="status"></footer>
+</div>
+<script src="cnc-engine.js?v=20261021.5"></script>
+<script src="app.js?v=20261021.5"></script>
+</body>
+</html>

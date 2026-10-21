@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const main = require.resolve('../desktop/main.cjs');
+const main = require.resolve('../build/windows-main.cjs');
 const events = {};
 let options, loaded, openHandler, navigation, permissionHandler, menu;
 const electron = {
