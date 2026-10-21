@@ -12,8 +12,20 @@ function updateLines(){const ls=lines();$('#lineNumbers').innerHTML=ls.map((_,i)
 function selectLine(n){if(!n)return;const ls=lines();let pos=0;for(let i=1;i<n;i++)pos+=ls[i-1].length+1;const len=ls[n-1]?.length||0;code.focus();code.setSelectionRange(pos,pos+len);state.selectedLine=n;updateLines();const lh=parseFloat(getComputedStyle(code).lineHeight)||20;code.scrollTop=Math.max(0,(n-4)*lh);$('#lineNumbers').scrollTop=code.scrollTop;draw()}
 function parse(){
  clearInterval(state.timer);state.timer=null;state.running=false;state.paused=false;state.step=0;
- state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:$('#controller').value});state.selectedLine=cursorLine();state.selectedPoint=null;hideInfo();updateLines();draw();
+ state.result=canvasResult(CNCEngine.parse(code.value,{mode:state.mode,controller:$('#controller').value}));state.selectedLine=cursorLine();state.selectedPoint=null;hideInfo();updateLines();draw();
 }
+// Engine coordinates remain physical radii. Only rotate the lathe display to Z horizontal / X vertical.
+function canvasResult(result){
+ if(state.mode!=='turning')return result;
+ return {...result,segments:result.segments.map(s=>{
+  if(s.meta?.state?.plane!=='G18')return s;
+  const meta={...s.meta};
+  if(meta.arcCenter){meta.arcCenter={x:meta.arcCenter.y,y:meta.arcCenter.x};meta.arcStart=Math.PI/2-meta.arcStart;meta.arcSweep=-meta.arcSweep;
+   for(const key of ['arcStartPoint','arcEndPoint'])if(meta[key])meta[key]={x:meta[key].y,y:meta[key].x};}
+  return {...s,x:s.y,y:s.x,x2:s.y2,y2:s.x2,meta};
+ })};
+}
+function planeAxes(plane){return plane==='G18'?(state.mode==='turning'?['Z','X']:['X','Z']):plane==='G19'?['Y','Z']:['X','Y']}
 function resize(){const r=canvas.getBoundingClientRect(),d=Math.max(1,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw()}
 function geometryBounds(){
  const use=state.displaySegments;
@@ -103,7 +115,7 @@ function draw(){
 }
 function drawCoordinateScale(){
  const v=state.view;if(!v)return;
- const origin=world(0,0),plane=state.result?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=plane==='G18'?['X','Z']:plane==='G19'?['Y','Z']:['X','Y'];
+ const origin=world(0,0),plane=state.result?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=planeAxes(plane);
  ctx.save();ctx.globalAlpha=1;ctx.setLineDash([]);ctx.font='11px Consolas,monospace';
  const raw=60/v.scale,power=10**Math.floor(Math.log10(raw)),step=[1,2,5,10].map(n=>n*power).find(n=>n>=raw);
  ctx.lineWidth=1;ctx.strokeStyle='rgba(130,160,190,.12)';
@@ -118,7 +130,7 @@ function drawSelectedPoint(){const p=world(state.selectedPoint.x,state.selectedP
 function hideInfo(){$('#pointInfo').classList.add('hidden');state.selectedPoint=null}
 function showInfo(seg,x,y){
  const inf=lineInfo(seg);state.selectedPoint={x,y};const plane=seg.meta?.state?.plane||'G17';
- $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>X: <b>${fmt(inf.x)}${state.mode==='turning'?' · Ø '+fmt(inf.x*2):''}</b></div><div>${seg.meta?.state?.plane==='G18'?'Z':'Y'}: <b>${fmt(inf.y)}</b></div><div>Plan: <b>${escapeHtml(seg.meta?.state?.plane||'G17')}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
+ $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>${planeAxes(plane)[0]}: <b>${fmt(inf.x)}</b></div><div>${planeAxes(plane)[1]}: <b>${fmt(inf.y)}${state.mode==='turning'&&plane==='G18'?' · code X'+fmt(inf.y*(seg.meta.state.diameterMode?2:1)):''}</b></div><div>Plan: <b>${escapeHtml(seg.meta?.state?.plane||'G17')}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
  const wrap=$('.canvas-wrap'),rect=wrap.getBoundingClientRect(),p=world(x,y);let px=p[0]+12,py=p[1]+12;const box=$('#pointInfo');box.classList.remove('hidden');const bw=box.offsetWidth,bh=box.offsetHeight;if(px+bw>rect.width)px=p[0]-bw-12;if(py+bh>rect.height)py=p[1]-bh-12;box.style.left=Math.max(4,px)+'px';box.style.top=Math.max(4,py)+'px';selectLine(inf.line)
 }
 function nearest(mx,my){const r={segments:state.displaySegments};if(!state.view)return null;let best=null,bestD=Infinity,bestPoint=null;
@@ -137,11 +149,11 @@ canvas.addEventListener('click',clickCanvas);canvas.addEventListener('mouseleave
 function cursorLine(){return code.value.slice(0,code.selectionStart).split('\n').length}
 function followCursor(){state.selectedLine=cursorLine();hideInfo();updateLines();draw()}
 function updateStatus(){
- const line=state.selectedLine||cursorLine(),segs=state.result?.segments||[],current=segs.filter(s=>s.line===line),last=current.at(-1),plane=last?.meta?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=plane==='G18'?['X','Z']:plane==='G19'?['Y','Z']:['X','Y'];
- $('#cursorInfo').textContent=`Dòng ${line} / ${lines().length}`;$('#planeTitle').textContent=`Canvas ${axes.join(' / ')}${state.mode==='turning'?' · X bán kính':''}`;$('#hint').textContent=state.mode==='turning'?'Tiện: X là đường kính, hình vẽ dùng X/2 (G7); G8 dùng X bán kính. CR= là bán kính cung, không chia đôi. Tròn kín dùng I/K theo bán kính.':'G02 / G03: CR= là bán kính cung; CR âm chọn cung lớn. Tròn kín dùng I/J.';document.querySelector('[data-insert="G02 I10 J0"]').textContent=state.mode==='turning'?'Tròn I/K':'Tròn I/J';
+ const line=state.selectedLine||cursorLine(),segs=state.result?.segments||[],current=segs.filter(s=>s.line===line),last=current.at(-1),plane=last?.meta?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=planeAxes(plane);
+ $('#cursorInfo').textContent=`Dòng ${line} / ${lines().length}`;$('#planeTitle').textContent=`Canvas ${axes.join(' / ')}${state.mode==='turning'?' · X/2 bán kính':''}`;$('#hint').textContent=state.mode==='turning'?'Tiện: Z ngang, X dọc. X40 trong code → bán kính 20 trên hình (X/2, G7); G8 dùng X bán kính. CR= là bán kính cung, không chia đôi. Tròn kín dùng I/K theo bán kính.':'G02 / G03: CR= là bán kính cung; CR âm chọn cung lớn. Tròn kín dùng I/J.';document.querySelector('[data-insert="G02 I10 J0"]').textContent=state.mode==='turning'?'Tròn I/K':'Tròn I/J';
  $('#selectionTitle').textContent=`Dòng ${line} · ${last?.g||'Soạn thảo'}`;
  const length=current.reduce((n,s)=>n+Math.hypot(s.x2-s.x,s.y2-s.y),0),radius=last?.meta?.arcRadius;
- $('#segmentInfo').textContent=last?`${axes[0]} ${fmt(last.x2)}${state.mode==='turning'&&plane==='G18'?' (Ø '+fmt(last.x2*2)+')':''} · ${axes[1]} ${fmt(last.y2)} | Chiều dài ${fmt(length)} mm${radius?' | R '+fmt(Math.abs(radius)):''}`:'Dòng này chưa có đường chạy dao.';
+ $('#segmentInfo').textContent=last?`${axes[0]} ${fmt(last.x2)} · ${axes[1]} ${fmt(last.y2)}${state.mode==='turning'&&plane==='G18'?' (code X'+fmt(last.y2*(last.meta.state.diameterMode?2:1))+', '+(last.meta.state.diameterMode?'X/2':'bán kính')+')':''} | Chiều dài ${fmt(length)} mm${radius?' | R '+fmt(Math.abs(radius)):''}`:'Dòng này chưa có đường chạy dao.';
  const ds=state.result?.diagnostics||[];$('#diagnostics').replaceChildren(...ds.slice(0,30).map(d=>{const b=document.createElement('button');b.className='diagnostic '+d.severity;b.textContent=`Dòng ${d.line}: ${d.message}`;b.onclick=()=>selectLine(d.line);return b}));
  $('#status').textContent=`${state.mode==='turning'?'TIỆN':'PHAY'} · ${$('#controller').value} · ${segs.length} đoạn · ${state.running?(state.paused?'Tạm dừng':'Đang chạy'):'Sẵn sàng'} · ${ds.length} thông báo`;
  try{localStorage.setItem('cnc-note',JSON.stringify({code:code.value,mode:state.mode,controller:$('#controller').value}))}catch{}
