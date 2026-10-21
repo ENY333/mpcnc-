@@ -1,0 +1,43 @@
+{
+  "name": "cnc-note",
+  "version": "1.0.0",
+  "description": "Soạn G-code và mô phỏng hình học phay, tiện ngoại tuyến",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "author": "ENY333",
+  "scripts": {
+    "desktop": "electron .",
+    "test": "node tests/turning-diameter.js && node tests/lathe-display.js && node tests/desktop-main.js",
+    "build:win": "electron-builder --win portable --x64"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.eny333.cncnote",
+    "productName": "CNC Note",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/main.cjs",
+      "index.html",
+      "app.js",
+      "cnc-engine.js",
+      "styles.css",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "CNC-Note-${version}-Windows-x64.exe"
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    }
+  }
+}
