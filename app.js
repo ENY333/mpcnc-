@@ -1,7 +1,7 @@
 (()=>{
 'use strict';
 const $=s=>document.querySelector(s), code=$('#code'), canvas=$('#canvas'), ctx=canvas.getContext('2d');
-const state={mode:'milling',result:null,step:0,running:false,paused:false,timer:null,selectedLine:null,selectedPoint:null,view:null};
+const state={mode:'milling',result:null,step:0,running:false,paused:false,timer:null,selectedLine:null,selectedPoint:null,view:null,displaySegments:[]};
 const TOOL_COLORS=['#35a9ff','#35d39b','#f3c65b','#f47777','#b78cff','#ff8cbd','#65d6d6','#f59e0b'];
 const dimColor='rgba(205,214,223,.38)', dimText='rgba(218,225,232,.52)', extColor='rgba(177,188,199,.24)';
 function lines(){return code.value.replace(/\r/g,'').split('\n')}
@@ -12,12 +12,12 @@ function updateLines(){const ls=lines();$('#lineNumbers').innerHTML=ls.map((_,i)
 function selectLine(n){if(!n)return;const ls=lines();let pos=0;for(let i=1;i<n;i++)pos+=ls[i-1].length+1;const len=ls[n-1]?.length||0;code.focus();code.setSelectionRange(pos,pos+len);state.selectedLine=n;updateLines();const lh=parseFloat(getComputedStyle(code).lineHeight)||20;code.scrollTop=Math.max(0,(n-4)*lh);$('#lineNumbers').scrollTop=code.scrollTop;draw()}
 function parse(){
  clearInterval(state.timer);state.timer=null;state.running=false;state.paused=false;state.step=0;
- state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:'FANUC'});state.selectedLine=null;state.selectedPoint=null;hideInfo();updateLines();draw();
+ state.result=CNCEngine.parse(code.value,{mode:state.mode,controller:$('#controller').value});state.selectedLine=cursorLine();state.selectedPoint=null;hideInfo();updateLines();draw();
 }
 function resize(){const r=canvas.getBoundingClientRect(),d=Math.max(1,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw()}
 function geometryBounds(){
- const segs=(state.result?.segments||[]).filter(s=>s.g!=='G00');
- const use=segs.length?segs:(state.result?.segments||[]);
+ const segs=(state.displaySegments).filter(s=>s.g!=='G00');
+ const use=segs.length?segs:(state.displaySegments);
  if(!use.length)return null;
  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
  const add=(x,y)=>{minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)};
@@ -72,7 +72,7 @@ function dimensions(){
 function drawArc(s){
  const m=s.meta;
  if(!m?.arcCenter)return false;
- const line=s.line, r=state.result?.segments||[];
+ const line=s.line, r=state.displaySegments;
  const parts=[];
  for(const q of r){if(q.line===line&&q.meta?.arc&&q.meta.arcCenter)parts.push(q)}
  if(!parts.length)return false;
@@ -88,7 +88,7 @@ function drawArc(s){
 }
 function draw(){
  const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);state.view=null;
- const r=state.result;if(!r||!r.segments.length){return}setupView();
+ const all=state.result?.segments||[];state.displaySegments=state.running?all.slice(0,state.step):$('#follow').checked?all.filter(s=>s.line<=(state.selectedLine||cursorLine())):all;const r={segments:state.displaySegments};updateStatus();if(!r.segments.length){return}setupView();
  const seen=new Set();let i=0;
  while(i<r.segments.length){
    const s=r.segments[i], selected=state.selectedLine===s.line, tool=s.meta?.state?.tool??1;
@@ -100,7 +100,7 @@ function draw(){
  }
  ctx.globalAlpha=1;ctx.setLineDash([]);
  drawCoordinateScale();
- dimensions();
+ if($('#dims').checked){dimensions();const active=state.displaySegments.filter(s=>s.line===state.selectedLine).at(-1);if(active?.meta?.arcCenter){const c=active.meta.arcCenter,a=world(c.x,c.y),b=world(active.x2,active.y2);ctx.strokeStyle='#f1c85b';ctx.fillStyle='#f1c85b';ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();ctx.font='12px monospace';ctx.fillText('R '+trim(active.meta.arcRadius),(a[0]+b[0])/2+6,(a[1]+b[1])/2-6)}}
  if(state.selectedPoint) drawSelectedPoint();
 }
 function drawCoordinateScale(){
@@ -115,21 +115,47 @@ function drawCoordinateScale(){
 function drawSelectedPoint(){const p=world(state.selectedPoint.x,state.selectedPoint.y);ctx.save();ctx.fillStyle='#fff';ctx.strokeStyle='#31a8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p[0],p[1],5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()}
 function hideInfo(){$('#pointInfo').classList.add('hidden');state.selectedPoint=null}
 function showInfo(seg,x,y){
- const inf=lineInfo(seg);state.selectedPoint={x,y};const plane=state.mode==='turning'?'X / Z':'X / Y';
- $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>X: <b>${fmt(inf.x)}</b></div><div>${state.mode==='turning'?'Z':'Y'}: <b>${fmt(inf.y)}</b></div><div>Z: <b>${fmt(inf.z)}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
+ const inf=lineInfo(seg);state.selectedPoint={x,y};const plane=seg.meta?.state?.plane||'G17';
+ $('#pointInfo').innerHTML=`<div class="title">${escapeHtml(inf.g)} • dòng ${inf.line}</div><div>X: <b>${fmt(inf.x)}${state.mode==='turning'?' · Ø '+fmt(inf.x*2):''}</b></div><div>${seg.meta?.state?.plane==='G18'?'Z':'Y'}: <b>${fmt(inf.y)}</b></div><div>Plan: <b>${escapeHtml(seg.meta?.state?.plane||'G17')}</b></div><div>G-code: <b>${escapeHtml(inf.g)}</b></div><div>Dao: <b>T${Math.round(inf.tool)}</b></div>`;
  const wrap=$('.canvas-wrap'),rect=wrap.getBoundingClientRect(),p=world(x,y);let px=p[0]+12,py=p[1]+12;const box=$('#pointInfo');box.classList.remove('hidden');const bw=box.offsetWidth,bh=box.offsetHeight;if(px+bw>rect.width)px=p[0]-bw-12;if(py+bh>rect.height)py=p[1]-bh-12;box.style.left=Math.max(4,px)+'px';box.style.top=Math.max(4,py)+'px';selectLine(inf.line)
 }
-function nearest(mx,my){const r=state.result;if(!r)return null;let best=null,bestD=Infinity,bestPoint=null;
+function nearest(mx,my){const r={segments:state.displaySegments};if(!state.view)return null;let best=null,bestD=Infinity,bestPoint=null;
  for(const s of r.segments){const a=world(s.x,s.y),b=world(s.x2,s.y2);const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;let t=l2?((mx-a[0])*dx+(my-a[1])*dy)/l2:0;t=Math.max(0,Math.min(1,t));const px=a[0]+dx*t,py=a[1]+dy*t,d=Math.hypot(mx-px,my-py);if(d<bestD){bestD=d;best=s;bestPoint={x:s.x+(s.x2-s.x)*t,y:s.y+(s.y2-s.y)*t}}}
  return best?{seg:best,d:bestD,point:bestPoint}:null;
 }
-function clickCanvas(e){const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;const hit=nearest(mx,my);if(!hit){hideInfo();draw();return}const {seg,d,point}=hit;if(d<=9){showInfo(seg,point.x,point.y)}else{hideInfo();selectLine(seg.line)}}
-function run(){parse();if(!state.result.segments.length)return;state.running=true;state.step=0;state.selectedLine=null;state.paused=false;clearInterval(state.timer);state.timer=setInterval(()=>{if(state.paused)return;state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;updateLines();draw();if(state.step>=state.result.segments.length){clearInterval(state.timer);state.timer=null;state.running=false}},35)}
+function clickCanvas(e){if(!state.view)return;const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;const hit=nearest(mx,my);if(!hit){hideInfo();draw();return}const {seg,d,point}=hit;if(d<=9){showInfo(seg,point.x,point.y)}else{hideInfo();selectLine(seg.line)}}
+function run(){parse();if(!state.result.segments.length)return;state.running=true;state.step=0;state.selectedLine=null;state.paused=false;clearInterval(state.timer);state.timer=setInterval(()=>{if(state.paused)return;state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;if(s)state.selectedPoint={x:s.x2,y:s.y2};updateLines();draw();if(state.step>=state.result.segments.length){clearInterval(state.timer);state.timer=null;state.running=false;draw()}},35)}
 function reset(){clearInterval(state.timer);state.timer=null;state.running=false;state.paused=false;state.step=0;state.selectedLine=null;hideInfo();draw()}
-function newFile(){clearInterval(state.timer);code.value='';state.step=0;state.selectedLine=null;hideInfo();updateLines();draw();code.focus()}
-function download(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([code.value],{type:'text/plain'}));a.download='program.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function newFile(){if(code.value&&!confirm('Xóa nội dung hiện tại để tạo chương trình mới?'))return;clearInterval(state.timer);code.value='';parse();code.focus()}
+function download(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([code.value],{type:'text/plain'}));a.download='program.nc';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 code.addEventListener('input',()=>{state.selectedLine=null;hideInfo();updateLines();parse()});code.addEventListener('scroll',()=>$('#lineNumbers').scrollTop=code.scrollTop);
-$('#newBtn').onclick=newFile;$('#openBtn').onclick=()=>$('#fileInput').click();$('#saveBtn').onclick=download;$('#runBtn').onclick=run;$('#pauseBtn').onclick=()=>{state.paused=!state.paused};$('#stopBtn').onclick=reset;$('#resetBtn').onclick=reset;$('#stepBtn').onclick=()=>{if(!state.result)parse();if(state.step<state.result.segments.length)state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;updateLines();draw()};$('#millingBtn').onclick=()=>{state.mode='milling';$('#millingBtn').classList.add('active');$('#turningBtn').classList.remove('active');parse()};$('#turningBtn').onclick=()=>{state.mode='turning';$('#turningBtn').classList.add('active');$('#millingBtn').classList.remove('active');parse()};$('#fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{code.value=rd.result||'';updateLines();parse();};rd.readAsText(f);e.target.value=''};
+$('#newBtn').onclick=newFile;$('#openBtn').onclick=()=>$('#fileInput').click();$('#saveBtn').onclick=download;$('#runBtn').onclick=run;$('#pauseBtn').onclick=()=>{state.paused=!state.paused;updateStatus()};$('#stopBtn').onclick=reset;$('#resetBtn').onclick=reset;$('#stepBtn').onclick=()=>{clearInterval(state.timer);state.running=false;if(!state.result)parse();if(state.step<state.result.segments.length)state.step++;const s=state.result.segments[state.step-1];state.selectedLine=s?.line||null;updateLines();draw()};$('#millingBtn').onclick=()=>{state.mode='milling';$('#millingBtn').classList.add('active');$('#turningBtn').classList.remove('active');parse()};$('#turningBtn').onclick=()=>{state.mode='turning';$('#turningBtn').classList.add('active');$('#millingBtn').classList.remove('active');parse()};$('#fileInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{code.value=rd.result||'';updateLines();parse();};rd.readAsText(f);e.target.value=''};
 canvas.addEventListener('click',clickCanvas);canvas.addEventListener('mouseleave',()=>{});window.addEventListener('resize',resize);new ResizeObserver(resize).observe($('.canvas-wrap'));window.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='s'){e.preventDefault();download()}if(e.ctrlKey&&e.key==='Enter'){e.preventDefault();run()}});
+
+function cursorLine(){return code.value.slice(0,code.selectionStart).split('\n').length}
+function followCursor(){state.selectedLine=cursorLine();hideInfo();updateLines();draw()}
+function updateStatus(){
+ const line=state.selectedLine||cursorLine(),segs=state.result?.segments||[],current=segs.filter(s=>s.line===line),last=current.at(-1),plane=last?.meta?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=plane==='G18'?['X','Z']:plane==='G19'?['Y','Z']:['X','Y'];
+ $('#cursorInfo').textContent=`Dòng ${line} / ${lines().length}`;$('#planeTitle').textContent=`Canvas ${axes.join(' / ')}${state.mode==='turning'?' · X bán kính':''}`;$('#hint').textContent=state.mode==='turning'?'Tiện: X là đường kính, hình vẽ dùng X/2 (G7); G8 dùng X bán kính. CR= là bán kính cung, không chia đôi. Tròn kín dùng I/K theo bán kính.':'G02 / G03: CR= là bán kính cung; CR âm chọn cung lớn. Tròn kín dùng I/J.';document.querySelector('[data-insert="G02 I10 J0"]').textContent=state.mode==='turning'?'Tròn I/K':'Tròn I/J';
+ $('#selectionTitle').textContent=`Dòng ${line} · ${last?.g||'Soạn thảo'}`;
+ const length=current.reduce((n,s)=>n+Math.hypot(s.x2-s.x,s.y2-s.y),0),radius=last?.meta?.arcRadius;
+ $('#segmentInfo').textContent=last?`${axes[0]} ${fmt(last.x2)}${state.mode==='turning'&&plane==='G18'?' (Ø '+fmt(last.x2*2)+')':''} · ${axes[1]} ${fmt(last.y2)} | Chiều dài ${fmt(length)} mm${radius?' | R '+fmt(Math.abs(radius)):''}`:'Dòng này chưa có đường chạy dao.';
+ const ds=state.result?.diagnostics||[];$('#diagnostics').replaceChildren(...ds.slice(0,30).map(d=>{const b=document.createElement('button');b.className='diagnostic '+d.severity;b.textContent=`Dòng ${d.line}: ${d.message}`;b.onclick=()=>selectLine(d.line);return b}));
+ $('#status').textContent=`${state.mode==='turning'?'TIỆN':'PHAY'} · ${$('#controller').value} · ${segs.length} đoạn · ${state.running?(state.paused?'Tạm dừng':'Đang chạy'):'Sẵn sàng'} · ${ds.length} thông báo`;
+ try{localStorage.setItem('cnc-note',JSON.stringify({code:code.value,mode:state.mode,controller:$('#controller').value}))}catch{}
+}
+function insertText(text){const start=code.selectionStart;code.setRangeText(text,start,code.selectionEnd,'end');parse();code.focus()}
+function calculate(){const r=Number($('#radius').value),c=Number($('#chord').value),a=Number($('#angle').value);if(!Number.isFinite(r)||r<=0||!Number.isFinite(c)||c<0||!Number.isFinite(a)){$('#calcResult').textContent='Nhập R > 0, dây cung ≥ 0 và góc hợp lệ.';return}$('#calcResult').textContent=`Ø ${fmt(2*r)} mm · Chu vi ${fmt(2*Math.PI*r)} mm · Cung ${fmt(Math.abs(a)*Math.PI*r/180)} mm · ${c>2*r?'Dây cung phải ≤ 2R':`Góc dây cung ${fmt(2*Math.asin(c/(2*r))*180/Math.PI)}° · Độ võng ${fmt(r-Math.sqrt(r*r-c*c/4))} mm`}`}
+for(const event of ['click','keyup','select'])code.addEventListener(event,()=>{if(!state.running)followCursor()});
+code.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();insertText('  ')}});
+$('#controller').onchange=parse;$('#follow').onchange=draw;$('#dims').onchange=draw;$('#fitBtn').onclick=resize;
+document.querySelectorAll('[data-insert]').forEach(b=>b.onclick=()=>insertText((code.selectionStart&&code.value[code.selectionStart-1]!=='\n'?'\n':'')+(state.mode==='turning'?b.dataset.insert==='G00 X0 Y0 Z5'?'G00 X40 Z5':b.dataset.insert.replace(/Y/g,'Z').replace(/J/g,'K'):b.dataset.insert)+'\n'));
+for(const id of ['radius','chord','angle'])$('#'+id).oninput=calculate;
+$('#insertCircle').onclick=()=>{const r=Number($('#radius').value);if(Number.isFinite(r)&&r>0)insertText((code.selectionStart&&code.value[code.selectionStart-1]!=='\n'?'\n':'')+(state.mode==='turning'?'G18 G02 I':'G17 G02 I')+r+(state.mode==='turning'?' K0':' J0')+'\n')};
+$('#insertRadius').onclick=()=>{if(Number($('#radius').value)>0)insertText('CR='+Number($('#radius').value))};
+$('#sampleBtn').onclick=()=>{if(code.value&&!confirm('Thay nội dung hiện tại bằng chương trình mẫu?'))return;code.value=state.mode==='turning'?'G21 G18\nG00 X40 Z5\nG01 X40 Z0 F0.2\nG01 X30 Z-10\nG03 X20 Z-20 CR=10\nG01 Z-40\nG00 X60 Z5':'G21 G17 G90\nG00 X0 Y0 Z5\nG01 Z-2 F100\nG01 X40 Y0 F300\nG03 X50 Y10 CR=10\nG01 Y40\nG03 X40 Y50 CR=10\nG01 X0\nG01 Y0\nG00 Z5';code.setSelectionRange(code.value.length,code.value.length);parse()};
+try{const saved=JSON.parse(localStorage.getItem('cnc-note'));if(saved&&typeof saved.code==='string'){code.value=saved.code;if(['milling','turning'].includes(saved.mode))state.mode=saved.mode;if(['FANUC','HAAS','LINUXCNC'].includes(saved.controller))$('#controller').value=saved.controller;$('#millingBtn').classList.toggle('active',state.mode==='milling');$('#turningBtn').classList.toggle('active',state.mode==='turning')}}catch{}
+calculate();
+
 updateLines();parse();resize();
 })();

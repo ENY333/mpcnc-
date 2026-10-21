@@ -110,14 +110,14 @@ function parse(text,options={}){
  const mode=options.mode==='turning'?'turning':'milling'; const controller=(options.controller||'FANUC').toUpperCase(); const profile=PROFILES[controller]||PROFILES.FANUC;
  const lines=String(text??'').replace(/\r/g,'').split('\n');
  const result={version:'3.0',mode,controller,segments:[],diagnostics:[],warnings:[],errors:[],events:[],lines:lines.length,totalLength:0,bounds:null,state:null,modalHistory:[],variables:{}};
- const s={x:0,y:0,z:mode==='turning'?0:5,a:0,b:0,c:0,u:0,v:0,w:0,f:0,spindle:0,tool:1,feedMode:'G94',distance:'G90',arcDistance:'G91.1',plane:mode==='turning'?'G18':'G17',units:'G21',motion:'G00',coolant:'M09',spindleCode:'M05',spindleMode:'G97',diameterMode:profile.diameterMode,canned:null,toolComp:'G40',toolLength:false,coordSystem:'G54',coordOffsets:{G54:{x:0,y:0,z:0},G55:{x:0,y:0,z:0},G56:{x:0,y:0,z:0},G57:{x:0,y:0,z:0},G58:{x:0,y:0,z:0},G59:{x:0,y:0,z:0}},localOffset:{x:0,y:0,z:0},g92Offset:{x:0,y:0,z:0},rotation:null,scale:1,mirrorX:false,mirrorY:false,skip:false};
+ const s={x:0,y:0,z:mode==='turning'?0:5,a:0,b:0,c:0,u:0,v:0,w:0,f:0,spindle:0,tool:1,feedMode:'G94',distance:'G90',arcDistance:'G91.1',plane:mode==='turning'?'G18':'G17',units:'G21',motion:'G00',coolant:'M09',spindleCode:'M05',spindleMode:'G97',diameterMode:mode==='turning',canned:null,toolComp:'G40',toolLength:false,coordSystem:'G54',coordOffsets:{G54:{x:0,y:0,z:0},G55:{x:0,y:0,z:0},G56:{x:0,y:0,z:0},G57:{x:0,y:0,z:0},G58:{x:0,y:0,z:0},G59:{x:0,y:0,z:0}},localOffset:{x:0,y:0,z:0},g92Offset:{x:0,y:0,z:0},rotation:null,scale:1,mirrorX:false,mirrorY:false,skip:false};
  const vars={}; const cycle={}; let profileStart=null,profileEnd=null,profileStartLine=null,profileEndLine=null;
  function diag(line,severity,message,code=''){const d={line,severity,message,code};result.diagnostics.push(d);if(severity==='warning')result.warnings.push(message);if(severity==='error')result.errors.push(message)}
  function setVar(name,val){if(name!=null&&finite(val))vars[String(name)]=val}
  function readAxis(ws,k){const v=word(ws,k);return v===null?null:evalExpr(v,vars)}
  function machineTarget(ws){
    const inc=s.distance==='G91'; const t=axisPoint(s);
-   for(const a of AXES){const v=readAxis(ws,a);if(v===null)continue;const k=a.toLowerCase();t[k]=inc?s[k]+v:v}
+   for(const a of AXES){let v=readAxis(ws,a);if(v===null)continue;if(mode==='turning'&&s.diameterMode&&a==='X')v/=2;const k=a.toLowerCase();t[k]=inc?s[k]+v:v}
    return t;
  }
  function transform(p){
@@ -126,13 +126,13 @@ function parse(text,options={}){
    if(s.rotation)q=rotatePoint(q,s.rotation.center,s.rotation.deg);
    const off=s.coordOffsets[s.coordSystem]||{x:0,y:0,z:0};q.x+=off.x+s.localOffset.x+s.g92Offset.x;q.y+=off.y+s.localOffset.y+s.g92Offset.y;q.z+=off.z+s.localOffset.z+s.g92Offset.z;return q;
  }
- function display(a,b,g,line,meta={}){const pa=transform(a),pb=transform(b);const qa=project(pa,s.plane),qb=project(pb,s.plane);addSegment(result.segments,qa,qb,g,line,{...meta,rawStart:{...a},rawEnd:{...b},state:{plane:s.plane,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool}})}
+ function display(a,b,g,line,meta={}){const pa=transform(a),pb=transform(b);const qa=project(pa,s.plane),qb=project(pb,s.plane);addSegment(result.segments,qa,qb,g,line,{...meta,rawStart:{...a},rawEnd:{...b},state:{plane:s.plane,diameterMode:s.diameterMode,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool}})}
  function executeLinear(a,b,g,line,meta={}){display(a,b,g,line,meta)}
  function executeArc(a,b,ws,cw,g,line,meta={}){
    const pa=transform(a),pb=transform(b); const qa=project(pa,s.plane),qb=project(pb,s.plane);
    let c=arcCenterIJK(pa,pb,ws,s.plane,s.arcDistance,pa); const rv=readAxis(ws,'R');
    if(!c&&rv!==null)c=arcCenterR(qa,qb,rv,cw);
-   const segState={plane:s.plane,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool};
+   const segState={plane:s.plane,diameterMode:s.diameterMode,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool};
    if(!c){diag(line,'warning','Không xác định được tâm cung; hiển thị thành đoạn thẳng.',g);addSegment(result.segments,qa,qb,g,line,{...meta,arcFallback:true,state:segState});return}
    arc(result.segments,qa,qb,c,cw,g,line,{...meta,state:segState})
  }
@@ -176,7 +176,7 @@ function parse(text,options={}){
      if(UNITS.has(g))s.units=g;
      if(FEED.has(g))s.feedMode=g;
      if(g==='G96')s.spindleMode='G96'; if(g==='G97')s.spindleMode='G97';
-     if(g==='G7')s.diameterMode=true; if(g==='G8')s.diameterMode=false;
+     if(mode==='turning'&&g==='G07')s.diameterMode=true; if(mode==='turning'&&g==='G08')s.diameterMode=false;
      if(['G40','G41','G42','G41.1','G42.1'].includes(g))s.toolComp=g;
      if(g==='G43'||g==='G43.1'||g==='G43.2')s.toolLength=true;if(g==='G49')s.toolLength=false;
      if(/^G5[4-9](?:\.\d)?$/.test(g))s.coordSystem=g;
@@ -227,7 +227,7 @@ function parse(text,options={}){
      else executeLinear(a0,target,g,line,{controller,mode});
    }
    Object.assign(s,target);
-   result.modalHistory.push({line,g:gs,m:ms,state:{motion:s.motion,distance:s.distance,plane:s.plane,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool}});
+   result.modalHistory.push({line,g:gs,m:ms,state:{motion:s.motion,distance:s.distance,plane:s.plane,diameterMode:s.diameterMode,units:s.units,feed:s.f,spindle:s.spindle,tool:s.tool}});
  }
  // Calculate geometry metrics.
  if(result.segments.length){
