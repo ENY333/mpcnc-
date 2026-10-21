@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CNC Studio</title>
-<link rel="stylesheet" href="styles.css?v=20261021.2">
+<link rel="stylesheet" href="styles.css?v=20261021.3">
 </head>
 <body>
 <div class="app">
@@ -35,7 +35,7 @@
     </section>
 
     <section class="view-panel">
-      <div class="view-head"><strong id="planeTitle">Canvas X / Y</strong><label><input id="follow" type="checkbox" checked> Vẽ tới dòng đang viết</label><label><input id="dims" type="checkbox" checked> Kích thước</label><button id="fitBtn">Vừa khung</button></div>
+      <div class="view-head"><strong id="planeTitle">Canvas X / Y</strong><span class="selection-note">Chọn dòng để tô sáng đường chạy</span><label><input id="dims" type="checkbox" checked> Kích thước</label><button id="fitBtn">Vừa khung</button></div>
       <div class="canvas-wrap">
         <canvas id="canvas"></canvas>
         <div id="pointInfo" class="point-info hidden"></div>
@@ -48,7 +48,7 @@
 <div><h3 id="selectionTitle">Dòng đang viết</h3><div id="segmentInfo"></div><div id="diagnostics" aria-live="polite"></div><small>Mô phỏng hình học; các chu kỳ nâng cao được ghi chú theo khả năng bộ đọc.</small></div>
 </section><footer id="status" role="status"></footer>
 </div>
-<script src="cnc-engine.js?v=20261021.2"></script>
-<script src="app.js?v=20261021.2"></script>
+<script src="cnc-engine.js?v=20261021.3"></script>
+<script src="app.js?v=20261021.3"></script>
 </body>
 </html>

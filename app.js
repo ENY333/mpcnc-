@@ -16,17 +16,16 @@ function parse(){
 }
 function resize(){const r=canvas.getBoundingClientRect(),d=Math.max(1,devicePixelRatio||1);canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));ctx.setTransform(d,0,0,d,0,0);draw()}
 function geometryBounds(){
- const segs=(state.displaySegments).filter(s=>s.g!=='G00');
- const use=segs.length?segs:(state.displaySegments);
- if(!use.length)return null;
- let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+ const use=state.displaySegments;
+ if(!use.length)return {minX:-10,maxX:10,minY:-10,maxY:10};
+ let minX=0,maxX=0,minY=0,maxY=0;
  const add=(x,y)=>{minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y)};
  for(const s of use){
    add(s.x,s.y); add(s.x2,s.y2);
    const m=s.meta;
    if(m?.arcCenter){
      const c=m.arcCenter, r=Math.abs(m.arcRadius||Math.hypot(s.x-c.x,s.y-c.y));
-     const a0=Math.atan2(s.y-c.y,s.x-c.x), sweep=m.arcSweep||0;
+     const a0=m.arcStart??Math.atan2(s.y-c.y,s.x-c.x), sweep=m.arcSweep||0;
      const angles=[a0,a0+sweep];
      for(const a of [0,Math.PI/2,Math.PI,Math.PI*1.5]){
        let t=a-a0;
@@ -88,7 +87,7 @@ function drawArc(s){
 }
 function draw(){
  const w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);ctx.fillStyle='#080d12';ctx.fillRect(0,0,w,h);state.view=null;
- const all=state.result?.segments||[];state.displaySegments=state.running?all.slice(0,state.step):$('#follow').checked?all.filter(s=>s.line<=(state.selectedLine||cursorLine())):all;const r={segments:state.displaySegments};updateStatus();if(!r.segments.length){return}setupView();
+ const all=state.result?.segments||[];state.displaySegments=all;const r={segments:state.displaySegments};updateStatus();setupView();drawCoordinateScale();
  const seen=new Set();let i=0;
  while(i<r.segments.length){
    const s=r.segments[i], selected=state.selectedLine===s.line, tool=s.meta?.state?.tool??1;
@@ -99,18 +98,21 @@ function draw(){
    i++;
  }
  ctx.globalAlpha=1;ctx.setLineDash([]);
- drawCoordinateScale();
  if($('#dims').checked){dimensions();const active=state.displaySegments.filter(s=>s.line===state.selectedLine).at(-1);if(active?.meta?.arcCenter){const c=active.meta.arcCenter,a=world(c.x,c.y),b=world(active.x2,active.y2);ctx.strokeStyle='#f1c85b';ctx.fillStyle='#f1c85b';ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();ctx.font='12px monospace';ctx.fillText('R '+trim(active.meta.arcRadius),(a[0]+b[0])/2+6,(a[1]+b[1])/2-6)}}
  if(state.selectedPoint) drawSelectedPoint();
 }
 function drawCoordinateScale(){
- const v=state.view;if(!v)return; const b=v.b;
- ctx.save(); ctx.strokeStyle='rgba(150,165,180,.10)'; ctx.fillStyle='rgba(160,175,190,.32)'; ctx.lineWidth=1; ctx.font='9px Consolas,monospace';
- const spanX=b.maxX-b.minX, spanY=b.maxY-b.minY;
- const step=Math.max(10,Math.pow(10,Math.floor(Math.log10(Math.max(spanX,spanY)/5))));
- for(let x=Math.ceil(b.minX/step)*step;x<=b.maxX+1e-9;x+=step){const p=world(x,b.minY);ctx.beginPath();ctx.moveTo(p[0],Math.max(0,p[1]-5));ctx.lineTo(p[0],Math.min(v.h,p[1]+5));ctx.stroke();ctx.textAlign='center';ctx.textBaseline='top';if(p[1]+7<v.h)ctx.fillText(trim(x),p[0],p[1]+7)}
- for(let y=Math.ceil(b.minY/step)*step;y<=b.maxY+1e-9;y+=step){const p=world(b.minX,y);ctx.beginPath();ctx.moveTo(Math.max(0,p[0]-5),p[1]);ctx.lineTo(Math.min(v.w,p[0]+5),p[1]);ctx.stroke();ctx.textAlign='right';ctx.textBaseline='middle';if(p[0]-7>0)ctx.fillText(trim(y),p[0]-7,p[1])}
- ctx.restore();
+ const v=state.view;if(!v)return;
+ const origin=world(0,0),plane=state.result?.state?.plane||(state.mode==='turning'?'G18':'G17'),axes=plane==='G18'?['X','Z']:plane==='G19'?['Y','Z']:['X','Y'];
+ ctx.save();ctx.globalAlpha=1;ctx.setLineDash([]);ctx.font='11px Consolas,monospace';
+ const raw=60/v.scale,power=10**Math.floor(Math.log10(raw)),step=[1,2,5,10].map(n=>n*power).find(n=>n>=raw);
+ ctx.lineWidth=1;ctx.strokeStyle='rgba(130,160,190,.12)';
+ const xMin=(0-origin[0])/v.scale,xMax=(v.w-origin[0])/v.scale,yMin=(origin[1]-v.h)/v.scale,yMax=origin[1]/v.scale;
+ for(let x=Math.ceil(xMin/step)*step;x<=xMax;x+=step){const px=world(x,0)[0];ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,v.h);ctx.stroke();if(Math.abs(x)>step/100){ctx.fillStyle='#8299ad';ctx.textAlign='center';ctx.fillText(trim(x),px,Math.min(v.h-8,Math.max(15,origin[1]+17)))}}
+ for(let y=Math.ceil(yMin/step)*step;y<=yMax;y+=step){const py=world(0,y)[1];ctx.beginPath();ctx.moveTo(0,py);ctx.lineTo(v.w,py);ctx.stroke();if(Math.abs(y)>step/100){ctx.fillStyle='#8299ad';ctx.textAlign='left';ctx.fillText(trim(y),Math.min(v.w-50,Math.max(5,origin[0]+7)),py-4)}}
+ ctx.lineWidth=1.5;ctx.strokeStyle='#f08080';ctx.beginPath();ctx.moveTo(8,origin[1]);ctx.lineTo(v.w-14,origin[1]);ctx.stroke();drawArrow(v.w-28,origin[1],v.w-14,origin[1]);ctx.fillStyle='#f08080';ctx.textAlign='right';ctx.fillText('+'+axes[0],v.w-16,Math.max(14,origin[1]-8));
+ ctx.strokeStyle='#65d6a0';ctx.beginPath();ctx.moveTo(origin[0],v.h-8);ctx.lineTo(origin[0],14);ctx.stroke();drawArrow(origin[0],28,origin[0],14);ctx.fillStyle='#65d6a0';ctx.textAlign='left';ctx.fillText('+'+axes[1],origin[0]+8,20);
+ ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(...origin,3,0,Math.PI*2);ctx.fill();ctx.fillText(axes[0]+'0 / '+axes[1]+'0',origin[0]+8,Math.min(v.h-8,origin[1]+32));ctx.restore();
 }
 function drawSelectedPoint(){const p=world(state.selectedPoint.x,state.selectedPoint.y);ctx.save();ctx.fillStyle='#fff';ctx.strokeStyle='#31a8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(p[0],p[1],5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore()}
 function hideInfo(){$('#pointInfo').classList.add('hidden');state.selectedPoint=null}
@@ -148,7 +150,7 @@ function insertText(text){const start=code.selectionStart;code.setRangeText(text
 function calculate(){const r=Number($('#radius').value),c=Number($('#chord').value),a=Number($('#angle').value);if(!Number.isFinite(r)||r<=0||!Number.isFinite(c)||c<0||!Number.isFinite(a)){$('#calcResult').textContent='Nhập R > 0, dây cung ≥ 0 và góc hợp lệ.';return}$('#calcResult').textContent=`Ø ${fmt(2*r)} mm · Chu vi ${fmt(2*Math.PI*r)} mm · Cung ${fmt(Math.abs(a)*Math.PI*r/180)} mm · ${c>2*r?'Dây cung phải ≤ 2R':`Góc dây cung ${fmt(2*Math.asin(c/(2*r))*180/Math.PI)}° · Độ võng ${fmt(r-Math.sqrt(r*r-c*c/4))} mm`}`}
 for(const event of ['click','keyup','select'])code.addEventListener(event,()=>{if(!state.running)followCursor()});
 code.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();insertText('  ')}});
-$('#controller').onchange=parse;$('#follow').onchange=draw;$('#dims').onchange=draw;$('#fitBtn').onclick=resize;
+$('#controller').onchange=parse;$('#dims').onchange=draw;$('#fitBtn').onclick=resize;
 document.querySelectorAll('[data-insert]').forEach(b=>b.onclick=()=>insertText((code.selectionStart&&code.value[code.selectionStart-1]!=='\n'?'\n':'')+(state.mode==='turning'?b.dataset.insert==='G00 X0 Y0 Z5'?'G00 X40 Z5':b.dataset.insert.replace(/Y/g,'Z').replace(/J/g,'K'):b.dataset.insert)+'\n'));
 for(const id of ['radius','chord','angle'])$('#'+id).oninput=calculate;
 $('#insertCircle').onclick=()=>{const r=Number($('#radius').value);if(Number.isFinite(r)&&r>0)insertText((code.selectionStart&&code.value[code.selectionStart-1]!=='\n'?'\n':'')+(state.mode==='turning'?'G18 G02 I':'G17 G02 I')+r+(state.mode==='turning'?' K0':' J0')+'\n')};
